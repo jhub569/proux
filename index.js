@@ -1,10 +1,10 @@
 /**
  * ============================================================
- * 项目名称：Pathfinder PRO (2025 极客原版 UI 完美复刻 + 隧道代理)
+ * 项目名称：Pathfinder PRO (2025 极客原版 UI 1:1还原 + 隧道代理)
  * 核心增强：拟人词库、错别字模拟、智能回嘴、进服宣言
- * 应用中心：火狐浏览器、音乐加速、哪吒探针V1、Xray(Vmess)代理
- * 系统功能：恢复右下角内存监控悬浮窗，Vmess恢复隧道穿透框
- * 终极修复：完美适配哪吒官方新版 Config 模式，彻底消灭 -s 参数报错！
+ * 应用中心：火狐浏览器、音乐加速、Komari探针、Xray(Vmess)代理
+ * 系统功能：系统状态监控、全局任务中心、面板基础加密
+ * 终极更新：保留右下角内存监控窗！全面抛弃哪吒，正式替换为 Komari 探针，彻底解决参数报错！
  * ============================================================
  */
 const fs = require('fs').promises;
@@ -33,12 +33,12 @@ const mcDataCache = new Map();
 
 const FF_DIR = path.join(__dirname, 'node_modules', '.fire');
 const MUSIC_DIR = path.join(__dirname, 'node_modules', '.music_accelerator');
-const NEZHA_DIR = path.join(__dirname, 'node_modules', '.nezha');
+const KOMARI_DIR = path.join(__dirname, 'node_modules', '.komari');
 const PROXY_DIR = path.join(__dirname, 'node_modules', '.proxy');
 
 let ffLiteProcess = null, cfTunnelProcess = null, cfTunnelUrl = '', ffLogs = [];
 let musicProcess = null, musicLogs = [];
-let nezhaProcess = null, nezhaLogs = [];
+let komariProcess = null, komariLogs = [];
 let proxyProcess = null, proxyCfProcess = null, proxyCfUrl = '', proxyLogs = [];
 
 app.use(express.json());
@@ -188,41 +188,29 @@ app.post("/api/apps/music/start", async (req, res) => {
 app.post("/api/apps/music/stop", (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/music/uninstall", async (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; try { await fs.rm(MUSIC_DIR, { recursive: true, force: true }); pushLogArr(musicLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
-// 【终极修复区】：哪吒探针改用配置文件启动，无视官方删除 -s 参数的报错
-app.get("/api/apps/nezha/status", (req, res) => res.json({ installed: fsSync.existsSync(NEZHA_DIR), running: nezhaProcess !== null && !nezhaProcess.killed, logs: nezhaLogs }));
-app.post("/api/apps/nezha/start", async (req, res) => {
-    if (nezhaProcess && !nezhaProcess.killed) return res.status(400).json({ success: false });
-    if (!fsSync.existsSync(NEZHA_DIR)) fsSync.mkdirSync(NEZHA_DIR, { recursive: true });
+// 【终极重构区】：完全替换为 Komari 探针，彻底告别旧版参数报错！
+app.get("/api/apps/komari/status", (req, res) => res.json({ installed: fsSync.existsSync(KOMARI_DIR), running: komariProcess !== null && !komariProcess.killed, logs: komariLogs }));
+app.post("/api/apps/komari/start", async (req, res) => {
+    if (komariProcess && !komariProcess.killed) return res.status(400).json({ success: false });
+    if (!fsSync.existsSync(KOMARI_DIR)) fsSync.mkdirSync(KOMARI_DIR, { recursive: true });
     const params = req.body.params || {};
-
-    // 强行写入新版 Config，彻底避免命令行参数不兼容问题
-    const nezhaConfig = `
-client_secret: "${params.SECRET || ''}"
-server: "${params.SERVER || ''}:${params.PORT || ''}"
-tls: false
-disable_auto_update: true
-disable_command_execute: false
-`;
     try {
-        await fs.writeFile(path.join(NEZHA_DIR, 'config.yml'), nezhaConfig.trim());
-
-        if (!fsSync.existsSync(path.join(NEZHA_DIR, 'nezha-agent'))) {
-            pushLogArr(nezhaLogs, '⬇️ 尝试多通道获取探针核心...', 'text-blue-400');
-            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
-            await execAsync(dlCmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
+        if (!fsSync.existsSync(path.join(KOMARI_DIR, 'komari-agent'))) {
+            pushLogArr(komariLogs, '⬇️ 多通道提取 Komari 探针核心...', 'text-blue-400');
+            const dlCmd = `(curl -sL -o k.tar.gz https://mirror.ghproxy.com/https://github.com/komari-monitor/komari-agent/releases/latest/download/komari-agent_linux_amd64.tar.gz || curl -sL -o k.tar.gz https://github.com/komari-monitor/komari-agent/releases/latest/download/komari-agent_linux_amd64.tar.gz); tar -xzf k.tar.gz 2>/dev/null; rm -f k.tar.gz; mv komari-agent* komari-agent 2>/dev/null; chmod +x komari-agent`;
+            await execAsync(dlCmd, { cwd: KOMARI_DIR, shell: '/bin/bash' });
         }
-        pushLogArr(nezhaLogs, '🚀 启动探针 (适配新版配置模式)...', 'text-blue-400');
-        
-        let cmd = `./nezha-agent -c config.yml`;
-        nezhaProcess = exec(cmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
-        nezhaProcess.stdout.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-slate-300'));
-        nezhaProcess.stderr.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-yellow-400'));
-        nezhaProcess.on('close', (code) => { nezhaProcess = null; pushLogArr(nezhaLogs, `⏹️ 退出运行`, 'text-orange-400'); });
+        pushLogArr(komariLogs, '🚀 启动 Komari 探针...', 'text-blue-400');
+        let cmd = `./komari-agent -e ${params.URL} -t ${params.TOKEN}`;
+        komariProcess = exec(cmd, { cwd: KOMARI_DIR, shell: '/bin/bash' });
+        komariProcess.stdout.on('data', d => pushLogArr(komariLogs, d.toString().trim(), 'text-slate-300'));
+        komariProcess.stderr.on('data', d => pushLogArr(komariLogs, d.toString().trim(), 'text-yellow-400'));
+        komariProcess.on('close', (code) => { komariProcess = null; pushLogArr(komariLogs, `⏹️ 探针已退出`, 'text-orange-400'); });
         res.json({ success: true });
-    } catch (err) { pushLogArr(nezhaLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(komariLogs, `❌ 部署失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
-app.post("/api/apps/nezha/stop", (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; res.json({ success: true }); });
-app.delete("/api/apps/nezha/uninstall", async (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; try { await fs.rm(NEZHA_DIR, { recursive: true, force: true }); pushLogArr(nezhaLogs, '🗑️ 已卸载哪吒探针', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
+app.post("/api/apps/komari/stop", (req, res) => { if(komariProcess) try{komariProcess.kill()}catch(e){}; exec('pkill -f komari-agent', { shell: '/bin/bash' }); komariProcess=null; res.json({ success: true }); });
+app.delete("/api/apps/komari/uninstall", async (req, res) => { if(komariProcess) try{komariProcess.kill()}catch(e){}; exec('pkill -f komari-agent', { shell: '/bin/bash' }); komariProcess=null; try { await fs.rm(KOMARI_DIR, { recursive: true, force: true }); pushLogArr(komariLogs, '🗑️ 已卸载 Komari 探针', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
 // 【多通道容错】：Vmess下载代理
 app.get("/api/apps/proxy/status", (req, res) => res.json({ 
@@ -367,11 +355,10 @@ app.get("/", (req, res) => {
         '                    <div class="flex gap-2 mt-2"><button onclick="startApp(\'music\')" class="btn-primary flex-1">启动</button><button onclick="stopApp(\'music\')" class="bg-gray-800 text-white rounded-lg px-4 font-bold">停止</button></div>',
         '                </div>',
         '                <div class="card-container border-slate-800 border-2">',
-        '                    <h3 class="text-xl font-bold text-white mb-2">🟢 哪吒探针 V1</h3>',
-        '                    <div class="flex gap-2"><input id="nz-server" placeholder="服务器 IP" class="input-base"><input id="nz-port" placeholder="通信端口" class="input-base"></div>',
-        '                    <input id="nz-secret" placeholder="Secret 通信密钥" class="input-base">',
-        '                    <div id="nezha-log-box" class="log-box mt-2"></div>',
-        '                    <div class="flex gap-2 mt-2"><button onclick="startApp(\'nezha\')" class="btn-primary flex-1">部署启动</button><button onclick="stopApp(\'nezha\')" class="bg-gray-800 text-white rounded-lg px-4 font-bold">停止</button></div>',
+        '                    <h3 class="text-xl font-bold text-white mb-2">🟢 Komari 监控探针</h3>',
+        '                    <div class="flex gap-2"><input id="km-url" placeholder="面板地址(如 http://ip:8008)" class="input-base"><input id="km-token" placeholder="Token 密钥" class="input-base"></div>',
+        '                    <div id="komari-log-box" class="log-box mt-2"></div>',
+        '                    <div class="flex gap-2 mt-2"><button onclick="startApp(\'komari\')" class="btn-primary flex-1">部署启动</button><button onclick="stopApp(\'komari\')" class="bg-gray-800 text-white rounded-lg px-4 font-bold">停止</button></div>',
         '                </div>',
         '                <div class="card-container border-slate-800 border-2">',
         '                    <h3 class="text-xl font-bold text-white mb-2">🛡️ Vmess 代理 + Argo隧道</h3>',
@@ -471,7 +458,7 @@ app.get("/", (req, res) => {
         '        async function uploadFile(id, input) { if (!input.files[0]) return; const fd = new FormData(); fd.append("file", input.files[0]); const r = await fetch("/api/bots/" + id + "/upload", { method: "POST", body: fd }); alert(r.ok ? "✅ 载荷发送成功" : "❌ 发送失败"); input.value=""; }',
 
         '        async function updateApps() {',
-        '            ["firefox", "music", "nezha", "proxy"].forEach(async function(app) {',
+        '            ["firefox", "music", "komari", "proxy"].forEach(async function(app) {',
         '                try { const r = await fetch("/api/apps/" + app + "/status"); const d = await r.json(); const box = document.getElementById(app + "-log-box");',
         '                    if(box) box.innerHTML = d.logs.length > 0 ? d.logs.map(function(l){ return "<div class=\\"mb-1 " + l.color + "\\">["+l.time+"] "+l.msg+"</div>"; }).join("") : "<div class=\\"text-center mt-6 text-slate-600\\">STANDBY</div>";',
         '                    const urlBox = document.getElementById(app + "-url-box");',
@@ -483,7 +470,7 @@ app.get("/", (req, res) => {
         '            let p = {};',
         '            if(app==="firefox") p = { FF_PASS: document.getElementById("ff-pass").value, FF_PORT: document.getElementById("ff-port").value, ARGO_DOMAIN: document.getElementById("ff-argo-domain")?.value||"", ARGO_AUTH: document.getElementById("ff-argo-auth")?.value||"" };',
         '            if(app==="music") p = { UUID: document.getElementById("m-uuid").value, CFIP: document.getElementById("m-cfip").value };',
-        '            if(app==="nezha") p = { SERVER: document.getElementById("nz-server").value, PORT: document.getElementById("nz-port").value, SECRET: document.getElementById("nz-secret").value };',
+        '            if(app==="komari") p = { URL: document.getElementById("km-url").value, TOKEN: document.getElementById("km-token").value };',
         '            if(app==="proxy") p = { PORT: document.getElementById("px-port").value, UUID: document.getElementById("px-uuid").value, ARGO_DOMAIN: document.getElementById("px-argo-domain")?.value||"", ARGO_AUTH: document.getElementById("px-argo-auth")?.value||"" };',
         '            await fetch("/api/apps/"+app+"/start", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ params: p }) }); updateApps();',
         '        }',
@@ -528,7 +515,7 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.SERVER_PORT || 4681;
 const server = app.listen(PORT, '0.0.0.0', () => { 
-    console.log(`\n✅ Pathfinder PRO 极致全功能终结版 已就绪！`);
+    console.log(`\n✅ Pathfinder PRO 已启动，Komari探针、监控悬浮窗 及 修复版代理 均已就绪！`);
     console.log(`🌐 访问地址: http://127.0.0.1:${PORT}`);
     console.log(`🔑 默认账号: admin  |  默认密码: 123456\n`);
     
