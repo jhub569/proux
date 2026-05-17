@@ -1,10 +1,10 @@
 /**
  * ============================================================
- * 项目名称：Pathfinder PRO (2025 极客原版 UI 完美复刻 + 隧道代理)
+ * 项目名称：Pathfinder PRO (2025 极客原版 UI 1:1还原 + 隧道代理)
  * 核心增强：拟人词库、错别字模拟、智能回嘴、进服宣言
  * 应用中心：火狐浏览器、音乐加速、哪吒探针V1、Xray(Vmess)代理
  * 系统功能：系统状态监控、全局任务中心、面板基础加密
- * 终极更新：增加多通道下载容错机制，彻底解决 GitHub 加速节点宕机导致的启动报错
+ * 终极更新：锁定哪吒探针 V1.1.4 稳定版，彻底解决官方 V2 升级导致的启动参数报错！
  * ============================================================
  */
 const fs = require('fs').promises;
@@ -68,7 +68,7 @@ setInterval(() => { const status = getMemoryStatus(); if (parseFloat(status.perc
 function executeRestartSequence(botInstance, botMeta) { if (!botInstance || !botInstance.entity) return; botInstance.chat('/restart'); botMeta.pushLog(`⚡ 重启序列(1/2): /restart`, 'text-red-400 font-bold'); setTimeout(() => { if (botInstance && botInstance.entity) { botInstance.chat('restart'); botMeta.pushLog(`⚡ 重启序列(2/2): restart`, 'text-red-500 font-bold'); } }, 800); botMeta.lastRestartTick = Date.now(); }
 
 async function saveBotsConfig() { try { const config = Array.from(activeBots.values()).map(b => ({ host: b.targetHost, port: b.targetPort, username: b.username, settings: b.settings, logs: b.logs.slice(0, 30) })); await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch (err) {} }
-async function createSmartBot(id, host, port, username, existingLogs = [], settings = null) { let finalHost = host.trim(), finalPort = parseInt(port) || 25565; if (finalHost.includes(':')) { const parts = finalHost.split(':'); finalHost = parts[0]; finalPort = parseInt(parts[1]) || 25565; } const defaultSettings = { walk: false, ai: true, chat: false, restartInterval: 0, pterodactyl: { url: '', key: '', id: '', defaultDir: '/', guard: false } }; const botMeta = { id, username, targetHost: finalHost, targetPort: finalPort, status: "连接中", logs: Array.isArray(existingLogs) ? existingLogs.slice(0, 30) : [], settings: settings || defaultSettings, instance: null, afkTimer: null, isRepairing: false, lastRestartTick: Date.now(), isMoving: false }; activeBots.set(id, botMeta); const pushLog = (msg, colorClass = '') => { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); botMeta.logs.unshift({ time, msg, color: colorClass }); if (botMeta.logs.length > 30) botMeta.logs = botMeta.logs.slice(0, 30); }; botMeta.pushLog = pushLog; try { const bot = mineflayer.createBot({ host: finalHost, port: finalPort, username: username, auth: 'offline', hideErrors: true, physicsEnabled: botMeta.settings.walk, connectTimeout: 20000 }); bot.loadPlugin(pathfinder); botMeta.instance = bot; bot.once('spawn', () => { botMeta.status = "在线"; botMeta.centerPos = bot.entity.position.clone(); pushLog(`✅ 成功进入服务器`, 'text-[#4ade80] font-bold'); let mcData; try { mcData = mcDataCache.get(bot.version) || require('minecraft-data')(bot.version); if (mcData) mcDataCache.set(bot.version, mcData); } catch (e) { pushLog(`❌ 协议不支持`, 'text-red-500'); return bot.end(); } const movements = new Movements(bot, mcData); movements.canDig = false; bot.pathfinder.setMovements(movements); setTimeout(() => { if (bot.entity) { bot.chat("诸君 我喜欢萝莉！"); pushLog(`📣 进服宣言: 诸君 我喜欢萝莉！`, 'text-[#c084fc] font-bold'); } }, 2000); bot.on('chat', (sender, message) => { if (sender === bot.username || !botMeta.settings.chat) return; const keys = ["机器人", "脚本", "挂机", bot.username, "有人", "在吗"]; if (keys.some(k => message.includes(k)) && Math.random() > 0.4) { setTimeout(() => { if (bot.entity) { const reply = generateNaturalChat('interaction'); bot.chat(reply); pushLog(`🗨️ 智能回嘴: [${sender}] -> ${reply}`, 'text-[#c084fc] font-bold'); } }, 1500 + Math.random() * 2000); } }); if (botMeta.afkTimer) clearInterval(botMeta.afkTimer); botMeta.afkTimer = setInterval(() => { if (!bot.entity) return; if (botMeta.settings.restartInterval > 0 && (Date.now() - botMeta.lastRestartTick) / 60000 >= botMeta.settings.restartInterval) executeRestartSequence(bot, botMeta); if (botMeta.settings.ai && !botMeta.isMoving) { const target = bot.nearestEntity(p => p.type === 'player'); if (target) bot.lookAt(target.position.offset(0, 1.6, 0)); } if (botMeta.settings.walk && !botMeta.isMoving && Math.random() > 0.7) { botMeta.isMoving = true; const targetPos = botMeta.centerPos.offset((Math.random()-0.5)*12, 0, (Math.random()-0.5)*12); pushLog(`👣 巡逻: 目标点 [${Math.round(targetPos.x)}, ${Math.round(targetPos.z)}]`, 'text-[#4ade80]'); bot.pathfinder.setGoal(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 1)); } if (botMeta.settings.chat && Math.random() > 0.92) { const m = generateNaturalChat('idle'); bot.chat(m); pushLog(`💬 拟人发话: ${m}`, 'text-orange-400'); } }, 8000); }); bot.on('goal_reached', () => { botMeta.isMoving = false; }); bot.once('end', () => attemptRepair(id, botMeta, "断开")); bot.on('error', (e) => attemptRepair(id, botMeta, e.code || "ERR")); } catch (err) { attemptRepair(id, botMeta, "失败"); } }
+async function createSmartBot(id, host, port, username, existingLogs = [], settings = null) { let finalHost = host.trim(), finalPort = parseInt(port) || 25565; if (finalHost.includes(':')) { const parts = finalHost.split(':'); finalHost = parts[0]; finalPort = parseInt(parts[1]) || 25565; } const defaultSettings = { walk: false, ai: true, chat: false, restartInterval: 0, pterodactyl: { url: '', key: '', id: '', defaultDir: '/', guard: false } }; const botMeta = { id, username, targetHost: finalHost, targetPort: finalPort, status: "连接中", logs: Array.isArray(existingLogs) ? existingLogs.slice(0, 30) : [], settings: settings || defaultSettings, instance: null, afkTimer: null, isRepairing: false, lastRestartTick: Date.now(), isMoving: false }; activeBots.set(id, botMeta); const pushLog = (msg, colorClass = '') => { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); botMeta.logs.unshift({ time, msg, color: colorClass }); if (botMeta.logs.length > 30) botMeta.logs = botMeta.logs.slice(0, 30); }; botMeta.pushLog = pushLog; try { const bot = mineflayer.createBot({ host: finalHost, port: finalPort, username: username, auth: 'offline', hideErrors: true, physicsEnabled: botMeta.settings.walk, connectTimeout: 20000 }); bot.loadPlugin(pathfinder); botMeta.instance = bot; bot.once('spawn', () => { botMeta.status = "在线"; botMeta.centerPos = bot.entity.position.clone(); pushLog(`✅ 成功进入服务器`, 'text-[#4ade80] font-bold'); let mcData; try { mcData = mcDataCache.get(bot.version) || require('minecraft-data')(bot.version); if (mcData) mcDataCache.set(bot.version, mcData); } catch (e) { pushLog(`❌ 协议不支持`, 'text-red-500'); return bot.end(); } const movements = new Movements(bot, mcData); movements.canDig = false; bot.pathfinder.setMovements(movements); setTimeout(() => { if (bot.entity) { bot.chat("诸君 我喜欢萝莉！"); pushLog(`📣 进服宣言: 诸君 我喜欢萝莉！`, 'text-[#c084fc] font-bold'); } }, 2000); bot.on('chat', (sender, message) => { if (sender === bot.username || !botMeta.settings.chat) return; const keys = ["机器人", "脚本", "挂机", bot.username, "有人", "在吗"]; if (keys.some(k => message.includes(k)) && Math.random() > 0.4) { setTimeout(() => { if (bot.entity) { const reply = generateNaturalChat('interaction'); bot.chat(reply); pushLog(`🗨️ 智能回嘴: [${sender}] -> ${reply}`, 'text-[#c084fc] font-bold'); } }, 1500 + Math.random() * 2000); } }); if (botMeta.afkTimer) clearInterval(botMeta.afkTimer); botMeta.afkTimer = setInterval(() => { if (!bot.entity) return; if (botMeta.settings.restartInterval > 0 && (Date.now() - botMeta.lastRestartTick) / 60000 >= botMeta.settings.restartInterval) executeRestartSequence(bot, botMeta); if (botMeta.settings.ai && !botMeta.isMoving) { const target = bot.nearestEntity(p => p.type === 'player'); if (target) bot.lookAt(target.position.offset(0, 1.6, 0)); } if (botMeta.settings.walk && !botMeta.isMoving && Math.random() > 0.7) { botMeta.isMoving = true; const targetPos = botMeta.centerPos.offset((Math.random()-0.5)*12, 0, (Math.random()-0.5)*12); pushLog(`👣 巡逻: 目标点 [${Math.round(targetPos.x)}, ${Math.round(targetPos.z)}]`, 'text-[#4ade80]'); bot.pathfinder.setGoal(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 1)); } if (botMeta.settings.chat && Math.random() > 0.92) { const m = generateNaturalChat('idle'); bot.chat(m); pushLog(`💬 拟发话: ${m}`, 'text-orange-400'); } }, 8000); }); bot.on('goal_reached', () => { botMeta.isMoving = false; }); bot.once('end', () => attemptRepair(id, botMeta, "断开")); bot.on('error', (e) => attemptRepair(id, botMeta, e.code || "ERR")); } catch (err) { attemptRepair(id, botMeta, "失败"); } }
 function attemptRepair(id, botMeta, reason) { if (!activeBots.has(id) || botMeta.isRepairing) return; botMeta.isRepairing = true; botMeta.status = "重连中"; if (botMeta.instance) { botMeta.instance.removeAllListeners(); try { botMeta.instance.end(); } catch(e) {} botMeta.instance = null; } if (botMeta.afkTimer) clearInterval(botMeta.afkTimer); setTimeout(() => { if (!activeBots.has(id)) return; botMeta.isRepairing = false; createSmartBot(id, botMeta.targetHost, botMeta.targetPort, botMeta.username, botMeta.logs, botMeta.settings); }, 10000); }
 
 // --- [ 5. 机器人列表 API ] ---
@@ -156,11 +156,11 @@ app.post("/api/apps/firefox/start", async (req, res) => {
         cfTunnelProcess = exec(cfCmd, { cwd: FF_DIR, env, shell: '/bin/bash' });
         cfTunnelProcess.stderr.on('data', (d) => {
             const m = d.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
+            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 临时隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
             if(d.toString().match(/Connection (.*) registered/) && ARGO_DOMAIN) { cfTunnelUrl = ARGO_DOMAIN; pushLogArr(ffLogs, `✅ 固定隧道就绪！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
         });
         res.json({ success: true });
-    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/firefox/stop", (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null; kill $(lsof -t -i:25889) 2>/dev/null', { shell: '/bin/bash' }); if(ffLiteProcess) try{ffLiteProcess.kill()}catch(e){}; if(cfTunnelProcess) try{cfTunnelProcess.kill()}catch(e){}; ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; res.json({ success: true }); });
 app.delete("/api/apps/firefox/uninstall", async (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null', { shell: '/bin/bash' }); ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; try { await fs.rm(FF_DIR, { recursive: true, force: true }); pushLogArr(ffLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
@@ -191,7 +191,7 @@ app.post("/api/apps/music/start", async (req, res) => {
 app.post("/api/apps/music/stop", (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/music/uninstall", async (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; try { await fs.rm(MUSIC_DIR, { recursive: true, force: true }); pushLogArr(musicLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
-// 【绝对容错】：哪吒探针多通道下载
+// 【绝对容错】：哪吒探针 锁定 V1.1.4 稳定版，彻底解决参数报错
 app.get("/api/apps/nezha/status", (req, res) => res.json({ installed: fsSync.existsSync(NEZHA_DIR), running: nezhaProcess !== null && !nezhaProcess.killed, logs: nezhaLogs }));
 app.post("/api/apps/nezha/start", async (req, res) => {
     if (nezhaProcess && !nezhaProcess.killed) return res.status(400).json({ success: false });
@@ -199,8 +199,9 @@ app.post("/api/apps/nezha/start", async (req, res) => {
     const params = req.body.params || {};
     try {
         if (!fsSync.existsSync(path.join(NEZHA_DIR, 'nezha-agent'))) {
-            pushLogArr(nezhaLogs, '⬇️ 尝试多通道获取探针...', 'text-blue-400');
-            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
+            pushLogArr(nezhaLogs, '⬇️ 锁定下载哪吒探针 V1 稳定版...', 'text-blue-400');
+            // 锁定下载 v1.1.4 避免 V2 版本参数废弃导致报错
+            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/download/v1.1.4/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/download/v1.1.4/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
             await execAsync(dlCmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         }
         pushLogArr(nezhaLogs, '🚀 启动探针...', 'text-blue-400');
@@ -308,7 +309,7 @@ app.get("/", (req, res) => {
         '        .btn-primary:hover { background-color: #1d4ed8; }',
         '        .btn-danger { background-color: #ef4444; color: white; border-radius: 0.5rem; padding: 0.5rem; font-weight: bold; font-size: 0.875rem; cursor: pointer; width: 100%; }',
         '        .btn-danger:hover { background-color: #dc2626; }',
-        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 12rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
+        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 10rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
         '        .log-box::-webkit-scrollbar { width: 4px; } .log-box::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }',
         '        .toggle-btn { padding: 0.625rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 0.25rem; cursor: pointer; border: none; }',
         '        .toggle-on { background-color: #2563eb; color: white; }',
@@ -437,38 +438,15 @@ app.get("/", (req, res) => {
         '                card += "<div class=\\"flex justify-between items-start\\"><div class=\\"flex flex-col\\"><div class=\\"flex items-center gap-2\\"><h3 class=\\"text-xl font-bold text-white\\">" + b.username + "</h3>" + statusBadge + "</div><div class=\\"text-[11px] text-slate-500 mt-1 font-mono\\">" + b.host + ":" + b.port + "</div></div><button onclick=\\"removeBot(\\&#39;" + b.id + "\\&#39;)\\" class=\\"text-slate-500 hover:text-white text-xl leading-none\\">✕</button></div>";',
         '                card += "<div class=\\"log-box\\">" + logsHtml + "</div>";',
         '                card += "<div class=\\"grid grid-cols-3 gap-3\\">";',
-        '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;ai\\&#39;)\\" class=\\"toggle-btn " + aiClass + "\\">👁️ AI视角</button>";',
+        '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;ai\\&#39;)\\" class=\\"toggle-btn " + aiClass + "\\">👁️ AI</button>";',
         '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;walk\\&#39;)\\" class=\\"toggle-btn " + walkClass + "\\">👣 巡逻</button>";',
         '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;chat\\&#39;)\\" class=\\"toggle-btn " + chatClass + "\\">💬 喊话</button>";',
         '                card += "</div>";',
         
         '                card += "<details id=\\"adv-" + b.id + "\\" class=\\"mt-1\\"><summary class=\\"text-[10px] text-slate-500 cursor-pointer list-none\\">⚙️ 展开高级配置</summary>";',
-        '                card += "<div class=\\"mt-3 flex gap-1\\">";',
-        '                card += "<input id=\\"m-" + b.id + "\\" type=\\"number\\" placeholder=\\"分\\" class=\\"input-base text-xs px-2 py-1.5 min-w-0\\">";',
-        '                card += "<button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;m-" + b.id + "\\&#39;).value, \\&#39;min\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 px-3 py-1.5 rounded text-xs whitespace-nowrap\\">设分</button>";',
-        '                card += "<input id=\\"h-" + b.id + "\\" type=\\"number\\" placeholder=\\"时\\" class=\\"input-base text-xs px-2 py-1.5 min-w-0\\">";',
-        '                card += "<button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;h-" + b.id + "\\&#39;).value, \\&#39;hour\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 px-3 py-1.5 rounded text-xs whitespace-nowrap\\">设时</button>";',
-        '                card += "<button onclick=\\"restartNow(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-[#ef4444] hover:bg-[#dc2626] text-white px-3 py-1.5 rounded text-xs whitespace-nowrap ml-auto\\">重启</button>";',
-        '                card += "</div>";',
-        
-        '                card += "<div class=\\"grid grid-cols-[2fr_1fr] gap-2 mt-2\\">";',
-        '                card += "<input id=\\"u-" + b.id + "\\" placeholder=\\"面板 URL\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "url", b.settings.pterodactyl.url) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;url\\&#39;, this.value)\\">";',
-        '                card += "<input id=\\"s-" + b.id + "\\" placeholder=\\"Server ID\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "sid", b.settings.pterodactyl.id) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;sid\\&#39;, this.value)\\">";',
-        '                card += "</div>";',
-        
-        '                card += "<div class=\\"grid grid-cols-[2fr_1fr] gap-2 mt-2\\">";',
-        '                card += "<input id=\\"k-" + b.id + "\\" type=\\"password\\" placeholder=\\"API Key\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "key", b.settings.pterodactyl.key) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;key\\&#39;, this.value)\\">";',
-        '                card += "<input id=\\"d-" + b.id + "\\" placeholder=\\"同步目录 /\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "ddir", b.settings.pterodactyl.defaultDir) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;ddir\\&#39;, this.value)\\">";',
-        '                card += "</div>";',
-        
-        '                let guardCls = b.settings.pterodactyl.guard ? "bg-[#10b981] hover:bg-[#059669] text-white" : "bg-[#1f2937] hover:bg-[#374151] text-[#10b981]";',
-        '                card += "<div class=\\"grid grid-cols-3 gap-2 mt-2\\">";',
-        '                card += "<button onclick=\\"savePto(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 py-1.5 rounded text-xs font-bold\\">保存</button>";',
-        '                card += "<button onclick=\\"document.getElementById(\\&#39;f-" + b.id + "\\&#39;).click()\\" class=\\"bg-[#2563eb] hover:bg-[#1d4ed8] text-white py-1.5 rounded text-xs font-bold\\">上传</button>";',
-        '                card += "<input type=\\"file\\" id=\\"f-" + b.id + "\\" class=\\"hidden\\" onchange=\\"uploadFile(\\&#39;" + b.id + "\\&#39;, this)\\">";',
-        '                card += "<button onclick=\\"toggleGuard(\\&#39;" + b.id + "\\&#39;)\\" class=\\"py-1.5 rounded text-xs font-bold transition-colors " + guardCls + "\\">守护</button>";',
-        '                card += "</div></details>";',
-        
+        '                card += "<div class=\\"mt-3 space-y-2\\"><div class=\\"flex gap-2\\"><input id=\\"m-" + b.id + "\\" type=\\"number\\" placeholder=\\"分\\" class=\\"input-base text-xs p-1\\"><button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;m-" + b.id + "\\&#39;).value, \\&#39;min\\&#39;)\\" class=\\"bg-slate-700 text-white px-2 rounded text-xs\\">设分</button><input id=\\"h-" + b.id + "\\" type=\\"number\\" placeholder=\\"时\\" class=\\"input-base text-xs p-1\\"><button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;h-" + b.id + "\\&#39;).value, \\&#39;hour\\&#39;)\\" class=\\"bg-slate-700 text-white px-2 rounded text-xs\\">设时</button><button onclick=\\"restartNow(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-red-600 text-white px-2 rounded text-xs ml-auto\\">重启</button></div>";',
+        '                card += "<div class=\\"grid grid-cols-2 gap-2 mt-2\\"><input id=\\"u-" + b.id + "\\" placeholder=\\"翼龙 URL\\" class=\\"input-base text-xs p-1.5\\" value=\\"" + getDraft(b.id, "url", b.settings.pterodactyl.url) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;url\\&#39;, this.value)\\"><input id=\\"s-" + b.id + "\\" placeholder=\\"Server ID\\" class=\\"input-base text-xs p-1.5\\" value=\\"" + getDraft(b.id, "sid", b.settings.pterodactyl.id) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;sid\\&#39;, this.value)\\"><input id=\\"k-" + b.id + "\\" type=\\"password\\" placeholder=\\"API Key\\" class=\\"input-base text-xs p-1.5\\" value=\\"" + getDraft(b.id, "key", b.settings.pterodactyl.key) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;key\\&#39;, this.value)\\"><input id=\\"d-" + b.id + "\\" placeholder=\\"同步目录 /\\" class=\\"input-base text-xs p-1.5\\" value=\\"" + getDraft(b.id, "ddir", b.settings.pterodactyl.defaultDir) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;ddir\\&#39;, this.value)\\"></div>";',
+        '                card += "<div class=\\"flex gap-2 mt-1\\"><button onclick=\\"savePto(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-slate-700 text-white py-1 rounded text-xs flex-1\\">保存</button><button onclick=\\"document.getElementById(\\&#39;f-" + b.id + "\\&#39;).click()\\" class=\\"btn-primary py-1 text-xs flex-1\\">上传</button><input type=\\"file\\" id=\\"f-" + b.id + "\\" class=\\"hidden\\" onchange=\\"uploadFile(\\&#39;" + b.id + "\\&#39;, this)\\"><button onclick=\\"toggleGuard(\\&#39;" + b.id + "\\&#39;)\\" class=\\"flex-1 rounded text-xs font-bold " + (b.settings.pterodactyl.guard?"bg-emerald-600 text-white":"bg-slate-800 text-slate-400") + "\\">守护</button></div></div></details>";',
         '                card += "</div>";',
         '                html += card;',
         '            }',
@@ -543,7 +521,7 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.SERVER_PORT || 4681;
 const server = app.listen(PORT, '0.0.0.0', () => { 
-    console.log(`\n✅ Pathfinder PRO 已启动，原版UI、监控悬浮窗 及 修复版下载代理 均已就绪！`);
+    console.log(`\n✅ Pathfinder PRO 已启动，原版UI、监控悬浮窗 及 修复版探针下载 均已就绪！`);
     console.log(`🌐 访问地址: http://127.0.0.1:${PORT}`);
     console.log(`🔑 默认账号: admin  |  默认密码: 123456\n`);
     
