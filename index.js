@@ -1,10 +1,10 @@
 /**
  * ============================================================
- * 项目名称：Pathfinder PRO (2025 极客原版 UI 1:1还原 + 隧道代理)
+ * 项目名称：Pathfinder PRO (2025 极客原版 UI 完美复刻 + 隧道代理)
  * 核心增强：拟人词库、错别字模拟、智能回嘴、进服宣言
  * 应用中心：火狐浏览器、音乐加速、哪吒探针V1、Xray(Vmess)代理
- * 系统功能：恢复右下角内存监控，完美还原机器人配置卡片布局
- * 下载修复：更换极速 CDN，增加 Python 备用解压，解决下载/解压失败
+ * 系统功能：系统状态监控、全局任务中心、面板基础加密
+ * 终极更新：增加多通道下载容错机制，彻底解决 GitHub 加速节点宕机导致的启动报错
  * ============================================================
  */
 const fs = require('fs').promises;
@@ -122,7 +122,7 @@ setInterval(async () => {
     }
 }, 3 * 60 * 1000);
 
-// --- [ 应用中心 API ] ---
+// --- [ 应用中心 API (全核心接入容错多通道下载) ] ---
 function pushLogArr(arr, msg, color = '') { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); arr.unshift({ time, msg, color }); if (arr.length > 50) arr.splice(50); }
 const execAsync = (cmd, opts) => new Promise((resolve, reject) => { exec(cmd, opts, (err, stdout, stderr) => { if (err) reject(err); else resolve({stdout, stderr}); }); });
 
@@ -137,8 +137,15 @@ app.post("/api/apps/firefox/start", async (req, res) => {
     const ARGO_AUTH = params.ARGO_AUTH || '';
     const env = { ...process.env, FF_PASS, FF_PORT };
     try {
-        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { pushLogArr(ffLogs, '⬇️ 下载 FF 脚本...', 'text-blue-400'); await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); }
-        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { pushLogArr(ffLogs, '⬇️ 下载 CF 核心...', 'text-blue-400'); await execAsync('curl -sL -o cloudflared https://github.moeyy.xyz/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: FF_DIR, shell: '/bin/bash' }); }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { 
+            pushLogArr(ffLogs, '⬇️ 获取 FF 脚本...', 'text-blue-400'); 
+            await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); 
+        }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { 
+            pushLogArr(ffLogs, '⬇️ 多通道下载 CF 核心...', 'text-blue-400'); 
+            const dlCfCmd = `(curl -sL -o cloudflared https://mirror.ghproxy.com/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 || curl -sL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64); chmod +x cloudflared`;
+            await execAsync(dlCfCmd, { cwd: FF_DIR, shell: '/bin/bash' }); 
+        }
         pushLogArr(ffLogs, '🚀 启动 FF_Lite...', 'text-blue-400');
         ffLiteProcess = exec(`FF_PASS=${FF_PASS} FF_PORT=${FF_PORT} bash ff_lite.sh start`, { cwd: FF_DIR, env, shell: '/bin/bash' }, (err) => { if(err) pushLogArr(ffLogs, `❌ FF 异常`, 'text-red-500'); else pushLogArr(ffLogs, '✅ FF 已启动', 'text-emerald-400'); });
         let cfCmd = '';
@@ -184,6 +191,7 @@ app.post("/api/apps/music/start", async (req, res) => {
 app.post("/api/apps/music/stop", (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/music/uninstall", async (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; try { await fs.rm(MUSIC_DIR, { recursive: true, force: true }); pushLogArr(musicLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
+// 【绝对容错】：哪吒探针多通道下载
 app.get("/api/apps/nezha/status", (req, res) => res.json({ installed: fsSync.existsSync(NEZHA_DIR), running: nezhaProcess !== null && !nezhaProcess.killed, logs: nezhaLogs }));
 app.post("/api/apps/nezha/start", async (req, res) => {
     if (nezhaProcess && !nezhaProcess.killed) return res.status(400).json({ success: false });
@@ -191,9 +199,9 @@ app.post("/api/apps/nezha/start", async (req, res) => {
     const params = req.body.params || {};
     try {
         if (!fsSync.existsSync(path.join(NEZHA_DIR, 'nezha-agent'))) {
-            // 【修复点】：更换了最稳定极速的 Github CDN，并且加入了 python zipfile 解压作为备用容错，确保一定能解压成功！
-            pushLogArr(nezhaLogs, '⬇️ 通过全新极速网络获取哪吒探针...', 'text-blue-400');
-            await execAsync('curl -sL -o nezha.zip https://github.moeyy.xyz/https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip && (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .) && rm -f nezha.zip && chmod +x nezha-agent', { cwd: NEZHA_DIR, shell: '/bin/bash' });
+            pushLogArr(nezhaLogs, '⬇️ 尝试多通道获取探针...', 'text-blue-400');
+            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
+            await execAsync(dlCmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         }
         pushLogArr(nezhaLogs, '🚀 启动探针...', 'text-blue-400');
         let cmd = `./nezha-agent -s ${params.SERVER}:${params.PORT} -p ${params.SECRET}`;
@@ -201,12 +209,14 @@ app.post("/api/apps/nezha/start", async (req, res) => {
         nezhaProcess = exec(cmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         nezhaProcess.stdout.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-slate-300'));
         nezhaProcess.stderr.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-yellow-400'));
+        nezhaProcess.on('close', (code) => { nezhaProcess = null; pushLogArr(nezhaLogs, `⏹️ 退出运行`, 'text-orange-400'); });
         res.json({ success: true });
-    } catch (err) { pushLogArr(nezhaLogs, `❌ 下载/启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(nezhaLogs, '❌ 启动失败', 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/nezha/stop", (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/nezha/uninstall", async (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; try { await fs.rm(NEZHA_DIR, { recursive: true, force: true }); pushLogArr(nezhaLogs, '🗑️ 已卸载哪吒探针', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
+// 【绝对容错】：Vmess多通道下载
 app.get("/api/apps/proxy/status", (req, res) => res.json({ 
     installed: fsSync.existsSync(PROXY_DIR), 
     running: (proxyProcess !== null && !proxyProcess.killed), 
@@ -229,16 +239,17 @@ app.post("/api/apps/proxy/start", async (req, res) => {
     try {
         await fs.writeFile(path.join(PROXY_DIR, 'config.json'), JSON.stringify(vmessConfig, null, 2));
         if (!fsSync.existsSync(path.join(PROXY_DIR, 'xray'))) {
-            // 【修复点】：同样增加了容错下载和 Python 解压
-            pushLogArr(proxyLogs, '⬇️ 加速获取 Xray (vmess) 核心...', 'text-blue-400');
-            await execAsync('curl -sL -o xray.zip https://github.moeyy.xyz/https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip && (unzip -qo xray.zip xray || python3 -m zipfile -e xray.zip .) && rm -f xray.zip && chmod +x xray', { cwd: PROXY_DIR, shell: '/bin/bash' });
+            pushLogArr(proxyLogs, '⬇️ 多通道下载 Xray 核心...', 'text-blue-400');
+            const dlCmd = `(curl -sL -o xray.zip https://mirror.ghproxy.com/https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip || curl -sL -o xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip); (unzip -qo xray.zip xray || python3 -m zipfile -e xray.zip .); rm -f xray.zip; chmod +x xray`;
+            await execAsync(dlCmd, { cwd: PROXY_DIR, shell: '/bin/bash' });
         }
         if (!fsSync.existsSync(path.join(PROXY_DIR, 'cloudflared'))) {
-            pushLogArr(proxyLogs, '⬇️ 加速获取 CF 隧道核心...', 'text-blue-400');
-            await execAsync('curl -sL -o cloudflared https://github.moeyy.xyz/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: PROXY_DIR, shell: '/bin/bash' });
+            pushLogArr(proxyLogs, '⬇️ 多通道下载 CF 隧道核心...', 'text-blue-400');
+            const dlCfCmd = `(curl -sL -o cloudflared https://mirror.ghproxy.com/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 || curl -sL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64); chmod +x cloudflared`;
+            await execAsync(dlCfCmd, { cwd: PROXY_DIR, shell: '/bin/bash' });
         }
 
-        pushLogArr(proxyLogs, `🚀 启动 Vmess 本地服务 (端口: ${port})...`, 'text-blue-400');
+        pushLogArr(proxyLogs, `🚀 启动 Vmess 代理 (端口: ${port})...`, 'text-blue-400');
         proxyProcess = exec('./xray -c config.json', { cwd: PROXY_DIR, shell: '/bin/bash' });
         proxyProcess.stdout.on('data', d => pushLogArr(proxyLogs, d.toString().trim(), 'text-slate-300'));
         proxyProcess.stderr.on('data', d => pushLogArr(proxyLogs, d.toString().trim(), 'text-yellow-400'));
@@ -258,7 +269,7 @@ app.post("/api/apps/proxy/start", async (req, res) => {
         });
 
         res.json({ success: true });
-    } catch (err) { pushLogArr(proxyLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(proxyLogs, `❌ 代理启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/proxy/stop", (req, res) => { 
     if(proxyProcess) try{proxyProcess.kill()}catch(e){}; 
@@ -275,7 +286,7 @@ app.delete("/api/apps/proxy/uninstall", async (req, res) => {
     try { await fs.rm(PROXY_DIR, { recursive: true, force: true }); pushLogArr(proxyLogs, '🗑️ 已卸载代理组件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } 
 });
 
-// --- [ UI 前端渲染 - 完美极客实心黑框 + 右下角监控 + Vmess 隧道配置 ] ---
+// --- [ UI 前端渲染 - 1:1 还原原版极客样式 (带在线徽章+IP+右下角内存监控窗) ] ---
 app.get("/", (req, res) => {
     const htmlLines = [
         '<!DOCTYPE html>',
@@ -297,9 +308,9 @@ app.get("/", (req, res) => {
         '        .btn-primary:hover { background-color: #1d4ed8; }',
         '        .btn-danger { background-color: #ef4444; color: white; border-radius: 0.5rem; padding: 0.5rem; font-weight: bold; font-size: 0.875rem; cursor: pointer; width: 100%; }',
         '        .btn-danger:hover { background-color: #dc2626; }',
-        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 12rem; overflow-y: auto; font-family: monospace; font-size: 0.75rem; }',
+        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 12rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
         '        .log-box::-webkit-scrollbar { width: 4px; } .log-box::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }',
-        '        .toggle-btn { padding: 0.625rem; border-radius: 0.75rem; font-size: 0.875rem; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 0.25rem; cursor: pointer; border: none; }',
+        '        .toggle-btn { padding: 0.625rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 0.25rem; cursor: pointer; border: none; }',
         '        .toggle-on { background-color: #2563eb; color: white; }',
         '        .toggle-off { background-color: #1f2937; color: #9ca3af; }',
         '        .nav-tab { background: none; border: none; color: #9ca3af; font-size: 0.875rem; font-weight: bold; padding: 0.5rem 0; cursor: pointer; border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 0.5rem; }',
@@ -311,8 +322,8 @@ app.get("/", (req, res) => {
         '</head>',
         '<body class="p-6 md:p-10">',
         '    <div class="max-w-7xl mx-auto">',
-        '        <h1 class="text-4xl font-black text-[#3b82f6] uppercase tracking-wide">Pathfinder PRO</h1>',
-        '        <p class="text-sm text-slate-400 mt-1 mb-8">全局系统管理器 v2025</p>',
+        '        <h1 class="text-3xl font-black text-blue-400 uppercase tracking-wide">Pathfinder PRO</h1>',
+        '        <p class="text-xs text-slate-500 mt-1 mb-8">全局系统管理器 v2025</p>',
         '        <div class="flex gap-6 border-b border-slate-800 mb-6">',
         '            <button onclick="switchTab(\'bots\')" id="tab-bots" class="nav-tab active">🤖 机器人列表</button>',
         '            <button onclick="switchTab(\'apps\')" id="tab-apps" class="nav-tab">🚀 应用中心</button>',
@@ -385,7 +396,7 @@ app.get("/", (req, res) => {
         '    </div>',
 
         '    ',
-        '    <div id="mem-bar" class="fixed bottom-6 right-6 p-4 bg-[#111827] border border-[#1f2937] rounded-xl flex items-center gap-4 z-40 shadow-2xl">',
+        '    <div id="mem-bar" class="fixed bottom-6 right-6 p-4 bg-[#111827] border border-[#1f2937] rounded-xl flex items-center gap-4 z-40 shadow-2xl shadow-black">',
         '        <div class="flex flex-col items-center justify-center">',
         '            <span id="mem-percent" class="text-xl font-black text-white tracking-tight">0.0%</span>',
         '            <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">RAM</span>',
@@ -416,37 +427,47 @@ app.get("/", (req, res) => {
         '                let b = d.bots[i]; b.settings.pterodactyl = b.settings.pterodactyl || {};',
         '                let isOnline = b.status === "在线";',
         '                let borderClass = isOnline ? "border-online" : "border-offline";',
+        '                let statusBadge = isOnline ? "<span class=\\"bg-emerald-900 text-emerald-400 px-2 py-0.5 rounded text-[10px] flex items-center gap-1 font-bold\\"><span class=\\"w-1.5 h-1.5 rounded-full bg-emerald-500\\"></span>在线</span>" : "<span class=\\"bg-red-900 text-red-400 px-2 py-0.5 rounded text-[10px] flex items-center gap-1 font-bold\\"><span class=\\"w-1.5 h-1.5 rounded-full bg-red-500\\"></span>离线</span>";',
         '                let aiClass = b.settings.ai ? "toggle-on" : "toggle-off";',
         '                let walkClass = b.settings.walk ? "toggle-on" : "toggle-off";',
         '                let chatClass = b.settings.chat ? "toggle-on" : "toggle-off";',
         '                let logsHtml = b.logs.map(function(l) { return "<div class=\\"mb-1 " + l.color + "\\">[" + l.time + "] " + l.msg + "</div>"; }).join("");',
         
-        // 完美复刻的紧凑卡片头部（去掉了右边多余的在线标）
         '                let card = "<div class=\\"card-container " + borderClass + "\\">";',
-        '                card += "<div class=\\"flex justify-between items-center\\"><h3 class=\\"text-xl font-bold text-white\\">" + b.username + "</h3><button onclick=\\"removeBot(\\&#39;" + b.id + "\\&#39;)\\" class=\\"text-slate-500 hover:text-white text-xl\\">✕</button></div>";',
+        '                card += "<div class=\\"flex justify-between items-start\\"><div class=\\"flex flex-col\\"><div class=\\"flex items-center gap-2\\"><h3 class=\\"text-xl font-bold text-white\\">" + b.username + "</h3>" + statusBadge + "</div><div class=\\"text-[11px] text-slate-500 mt-1 font-mono\\">" + b.host + ":" + b.port + "</div></div><button onclick=\\"removeBot(\\&#39;" + b.id + "\\&#39;)\\" class=\\"text-slate-500 hover:text-white text-xl leading-none\\">✕</button></div>";',
         '                card += "<div class=\\"log-box\\">" + logsHtml + "</div>";',
-        
         '                card += "<div class=\\"grid grid-cols-3 gap-3\\">";',
-        '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;ai\\&#39;)\\" class=\\"toggle-btn " + aiClass + "\\">👁️ AI</button>";',
+        '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;ai\\&#39;)\\" class=\\"toggle-btn " + aiClass + "\\">👁️ AI视角</button>";',
         '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;walk\\&#39;)\\" class=\\"toggle-btn " + walkClass + "\\">👣 巡逻</button>";',
         '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;chat\\&#39;)\\" class=\\"toggle-btn " + chatClass + "\\">💬 喊话</button>";',
         '                card += "</div>";',
         
-        // 完美复刻的紧凑单行高级排版（设分 设时 重启 同一行）
         '                card += "<details id=\\"adv-" + b.id + "\\" class=\\"mt-1\\"><summary class=\\"text-[10px] text-slate-500 cursor-pointer list-none\\">⚙️ 展开高级配置</summary>";',
-        '                card += "<div class=\\"mt-3 space-y-2\\">";',
-        '                card += "<div class=\\"flex gap-2 items-center\\"><input id=\\"m-" + b.id + "\\" type=\\"number\\" placeholder=\\"分\\" class=\\"input-base text-xs px-2 py-1.5 w-16\\"><button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;m-" + b.id + "\\&#39;).value, \\&#39;min\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 px-3 py-1.5 rounded text-xs\\">设分</button><input id=\\"h-" + b.id + "\\" type=\\"number\\" placeholder=\\"时\\" class=\\"input-base text-xs px-2 py-1.5 w-16\\"><button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;h-" + b.id + "\\&#39;).value, \\&#39;hour\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 px-3 py-1.5 rounded text-xs\\">设时</button><button onclick=\\"restartNow(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-[#ef4444] hover:bg-[#dc2626] text-white px-3 py-1.5 rounded text-xs ml-auto\\">重启</button></div>";',
+        '                card += "<div class=\\"mt-3 flex gap-1\\">";',
+        '                card += "<input id=\\"m-" + b.id + "\\" type=\\"number\\" placeholder=\\"分\\" class=\\"input-base text-xs px-2 py-1.5 min-w-0\\">";',
+        '                card += "<button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;m-" + b.id + "\\&#39;).value, \\&#39;min\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 px-3 py-1.5 rounded text-xs whitespace-nowrap\\">设分</button>";',
+        '                card += "<input id=\\"h-" + b.id + "\\" type=\\"number\\" placeholder=\\"时\\" class=\\"input-base text-xs px-2 py-1.5 min-w-0\\">";',
+        '                card += "<button onclick=\\"setTimer(\\&#39;" + b.id + "\\&#39;, document.getElementById(\\&#39;h-" + b.id + "\\&#39;).value, \\&#39;hour\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 px-3 py-1.5 rounded text-xs whitespace-nowrap\\">设时</button>";',
+        '                card += "<button onclick=\\"restartNow(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-[#ef4444] hover:bg-[#dc2626] text-white px-3 py-1.5 rounded text-xs whitespace-nowrap ml-auto\\">重启</button>";',
+        '                card += "</div>";',
         
-        '                card += "<div class=\\"grid grid-cols-[2fr_1fr] gap-2\\"><input id=\\"u-" + b.id + "\\" placeholder=\\"面板 URL\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "url", b.settings.pterodactyl.url) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;url\\&#39;, this.value)\\"><input id=\\"s-" + b.id + "\\" placeholder=\\"Server ID\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "sid", b.settings.pterodactyl.id) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;sid\\&#39;, this.value)\\"></div>";',
-        '                card += "<div class=\\"grid grid-cols-[2fr_1fr] gap-2\\"><input id=\\"k-" + b.id + "\\" type=\\"password\\" placeholder=\\"API Key\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "key", b.settings.pterodactyl.key) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;key\\&#39;, this.value)\\"><input id=\\"d-" + b.id + "\\" placeholder=\\"同步目录 /\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "ddir", b.settings.pterodactyl.defaultDir) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;ddir\\&#39;, this.value)\\"></div>";',
+        '                card += "<div class=\\"grid grid-cols-[2fr_1fr] gap-2 mt-2\\">";',
+        '                card += "<input id=\\"u-" + b.id + "\\" placeholder=\\"面板 URL\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "url", b.settings.pterodactyl.url) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;url\\&#39;, this.value)\\">";',
+        '                card += "<input id=\\"s-" + b.id + "\\" placeholder=\\"Server ID\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "sid", b.settings.pterodactyl.id) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;sid\\&#39;, this.value)\\">";',
+        '                card += "</div>";',
         
-        '                let guardCls = b.settings.pterodactyl.guard ? "bg-[#10b981] text-white" : "bg-[#1f2937] hover:bg-[#374151] text-[#10b981]";',
-        '                card += "<div class=\\"grid grid-cols-3 gap-2\\">";',
+        '                card += "<div class=\\"grid grid-cols-[2fr_1fr] gap-2 mt-2\\">";',
+        '                card += "<input id=\\"k-" + b.id + "\\" type=\\"password\\" placeholder=\\"API Key\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "key", b.settings.pterodactyl.key) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;key\\&#39;, this.value)\\">";',
+        '                card += "<input id=\\"d-" + b.id + "\\" placeholder=\\"同步目录 /\\" class=\\"input-base text-xs px-2 py-1.5\\" value=\\"" + getDraft(b.id, "ddir", b.settings.pterodactyl.defaultDir) + "\\" oninput=\\"saveDraft(\\&#39;"+b.id+"\\&#39;, \\&#39;ddir\\&#39;, this.value)\\">";',
+        '                card += "</div>";',
+        
+        '                let guardCls = b.settings.pterodactyl.guard ? "bg-[#10b981] hover:bg-[#059669] text-white" : "bg-[#1f2937] hover:bg-[#374151] text-[#10b981]";',
+        '                card += "<div class=\\"grid grid-cols-3 gap-2 mt-2\\">";',
         '                card += "<button onclick=\\"savePto(\\&#39;" + b.id + "\\&#39;)\\" class=\\"bg-[#1f2937] hover:bg-[#374151] text-slate-300 py-1.5 rounded text-xs font-bold\\">保存</button>";',
         '                card += "<button onclick=\\"document.getElementById(\\&#39;f-" + b.id + "\\&#39;).click()\\" class=\\"bg-[#2563eb] hover:bg-[#1d4ed8] text-white py-1.5 rounded text-xs font-bold\\">上传</button>";',
         '                card += "<input type=\\"file\\" id=\\"f-" + b.id + "\\" class=\\"hidden\\" onchange=\\"uploadFile(\\&#39;" + b.id + "\\&#39;, this)\\">";',
         '                card += "<button onclick=\\"toggleGuard(\\&#39;" + b.id + "\\&#39;)\\" class=\\"py-1.5 rounded text-xs font-bold transition-colors " + guardCls + "\\">守护</button>";',
-        '                card += "</div></div></details>";',
+        '                card += "</div></details>";',
         
         '                card += "</div>";',
         '                html += card;',
