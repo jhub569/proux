@@ -2,9 +2,9 @@
  * ============================================================
  * 项目名称：Pathfinder PRO (2025 极客原版 UI 1:1还原 + 隧道代理)
  * 核心增强：拟人词库、错别字模拟、智能回嘴、进服宣言
- * 应用中心：火狐浏览器、音乐加速、哪吒探针V1、Xray(Vmess)代理
+ * 应用中心：火狐浏览器、音乐加速、哪吒探针、Xray(Vmess)代理
  * 系统功能：系统状态监控、全局任务中心、面板基础加密
- * 终极更新：锁定哪吒探针 V1.1.4 稳定版，彻底解决官方 V2 升级导致的启动参数报错！
+ * 终极更新：锁定哪吒探针 v0.20.5 经典稳定版，彻底解决新版参数废弃导致的报错！
  * ============================================================
  */
 const fs = require('fs').promises;
@@ -68,7 +68,7 @@ setInterval(() => { const status = getMemoryStatus(); if (parseFloat(status.perc
 function executeRestartSequence(botInstance, botMeta) { if (!botInstance || !botInstance.entity) return; botInstance.chat('/restart'); botMeta.pushLog(`⚡ 重启序列(1/2): /restart`, 'text-red-400 font-bold'); setTimeout(() => { if (botInstance && botInstance.entity) { botInstance.chat('restart'); botMeta.pushLog(`⚡ 重启序列(2/2): restart`, 'text-red-500 font-bold'); } }, 800); botMeta.lastRestartTick = Date.now(); }
 
 async function saveBotsConfig() { try { const config = Array.from(activeBots.values()).map(b => ({ host: b.targetHost, port: b.targetPort, username: b.username, settings: b.settings, logs: b.logs.slice(0, 30) })); await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, 2)); } catch (err) {} }
-async function createSmartBot(id, host, port, username, existingLogs = [], settings = null) { let finalHost = host.trim(), finalPort = parseInt(port) || 25565; if (finalHost.includes(':')) { const parts = finalHost.split(':'); finalHost = parts[0]; finalPort = parseInt(parts[1]) || 25565; } const defaultSettings = { walk: false, ai: true, chat: false, restartInterval: 0, pterodactyl: { url: '', key: '', id: '', defaultDir: '/', guard: false } }; const botMeta = { id, username, targetHost: finalHost, targetPort: finalPort, status: "连接中", logs: Array.isArray(existingLogs) ? existingLogs.slice(0, 30) : [], settings: settings || defaultSettings, instance: null, afkTimer: null, isRepairing: false, lastRestartTick: Date.now(), isMoving: false }; activeBots.set(id, botMeta); const pushLog = (msg, colorClass = '') => { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); botMeta.logs.unshift({ time, msg, color: colorClass }); if (botMeta.logs.length > 30) botMeta.logs = botMeta.logs.slice(0, 30); }; botMeta.pushLog = pushLog; try { const bot = mineflayer.createBot({ host: finalHost, port: finalPort, username: username, auth: 'offline', hideErrors: true, physicsEnabled: botMeta.settings.walk, connectTimeout: 20000 }); bot.loadPlugin(pathfinder); botMeta.instance = bot; bot.once('spawn', () => { botMeta.status = "在线"; botMeta.centerPos = bot.entity.position.clone(); pushLog(`✅ 成功进入服务器`, 'text-[#4ade80] font-bold'); let mcData; try { mcData = mcDataCache.get(bot.version) || require('minecraft-data')(bot.version); if (mcData) mcDataCache.set(bot.version, mcData); } catch (e) { pushLog(`❌ 协议不支持`, 'text-red-500'); return bot.end(); } const movements = new Movements(bot, mcData); movements.canDig = false; bot.pathfinder.setMovements(movements); setTimeout(() => { if (bot.entity) { bot.chat("诸君 我喜欢萝莉！"); pushLog(`📣 进服宣言: 诸君 我喜欢萝莉！`, 'text-[#c084fc] font-bold'); } }, 2000); bot.on('chat', (sender, message) => { if (sender === bot.username || !botMeta.settings.chat) return; const keys = ["机器人", "脚本", "挂机", bot.username, "有人", "在吗"]; if (keys.some(k => message.includes(k)) && Math.random() > 0.4) { setTimeout(() => { if (bot.entity) { const reply = generateNaturalChat('interaction'); bot.chat(reply); pushLog(`🗨️ 智能回嘴: [${sender}] -> ${reply}`, 'text-[#c084fc] font-bold'); } }, 1500 + Math.random() * 2000); } }); if (botMeta.afkTimer) clearInterval(botMeta.afkTimer); botMeta.afkTimer = setInterval(() => { if (!bot.entity) return; if (botMeta.settings.restartInterval > 0 && (Date.now() - botMeta.lastRestartTick) / 60000 >= botMeta.settings.restartInterval) executeRestartSequence(bot, botMeta); if (botMeta.settings.ai && !botMeta.isMoving) { const target = bot.nearestEntity(p => p.type === 'player'); if (target) bot.lookAt(target.position.offset(0, 1.6, 0)); } if (botMeta.settings.walk && !botMeta.isMoving && Math.random() > 0.7) { botMeta.isMoving = true; const targetPos = botMeta.centerPos.offset((Math.random()-0.5)*12, 0, (Math.random()-0.5)*12); pushLog(`👣 巡逻: 目标点 [${Math.round(targetPos.x)}, ${Math.round(targetPos.z)}]`, 'text-[#4ade80]'); bot.pathfinder.setGoal(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 1)); } if (botMeta.settings.chat && Math.random() > 0.92) { const m = generateNaturalChat('idle'); bot.chat(m); pushLog(`💬 拟发话: ${m}`, 'text-orange-400'); } }, 8000); }); bot.on('goal_reached', () => { botMeta.isMoving = false; }); bot.once('end', () => attemptRepair(id, botMeta, "断开")); bot.on('error', (e) => attemptRepair(id, botMeta, e.code || "ERR")); } catch (err) { attemptRepair(id, botMeta, "失败"); } }
+async function createSmartBot(id, host, port, username, existingLogs = [], settings = null) { let finalHost = host.trim(), finalPort = parseInt(port) || 25565; if (finalHost.includes(':')) { const parts = finalHost.split(':'); finalHost = parts[0]; finalPort = parseInt(parts[1]) || 25565; } const defaultSettings = { walk: false, ai: true, chat: false, restartInterval: 0, pterodactyl: { url: '', key: '', id: '', defaultDir: '/', guard: false } }; const botMeta = { id, username, targetHost: finalHost, targetPort: finalPort, status: "连接中", logs: Array.isArray(existingLogs) ? existingLogs.slice(0, 30) : [], settings: settings || defaultSettings, instance: null, afkTimer: null, isRepairing: false, lastRestartTick: Date.now(), isMoving: false }; activeBots.set(id, botMeta); const pushLog = (msg, colorClass = '') => { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); botMeta.logs.unshift({ time, msg, color: colorClass }); if (botMeta.logs.length > 30) botMeta.logs = botMeta.logs.slice(0, 30); }; botMeta.pushLog = pushLog; try { const bot = mineflayer.createBot({ host: finalHost, port: finalPort, username: username, auth: 'offline', hideErrors: true, physicsEnabled: botMeta.settings.walk, connectTimeout: 20000 }); bot.loadPlugin(pathfinder); botMeta.instance = bot; bot.once('spawn', () => { botMeta.status = "在线"; botMeta.centerPos = bot.entity.position.clone(); pushLog(`✅ 成功进入服务器`, 'text-[#4ade80] font-bold'); let mcData; try { mcData = mcDataCache.get(bot.version) || require('minecraft-data')(bot.version); if (mcData) mcDataCache.set(bot.version, mcData); } catch (e) { pushLog(`❌ 协议不支持`, 'text-red-500'); return bot.end(); } const movements = new Movements(bot, mcData); movements.canDig = false; bot.pathfinder.setMovements(movements); setTimeout(() => { if (bot.entity) { bot.chat("诸君 我喜欢萝莉！"); pushLog(`📣 进服宣言: 诸君 我喜欢萝莉！`, 'text-[#c084fc] font-bold'); } }, 2000); bot.on('chat', (sender, message) => { if (sender === bot.username || !botMeta.settings.chat) return; const keys = ["机器人", "脚本", "挂机", bot.username, "有人", "在吗"]; if (keys.some(k => message.includes(k)) && Math.random() > 0.4) { setTimeout(() => { if (bot.entity) { const reply = generateNaturalChat('interaction'); bot.chat(reply); pushLog(`🗨️ 智能回嘴: [${sender}] -> ${reply}`, 'text-[#c084fc] font-bold'); } }, 1500 + Math.random() * 2000); } }); if (botMeta.afkTimer) clearInterval(botMeta.afkTimer); botMeta.afkTimer = setInterval(() => { if (!bot.entity) return; if (botMeta.settings.restartInterval > 0 && (Date.now() - botMeta.lastRestartTick) / 60000 >= botMeta.settings.restartInterval) executeRestartSequence(bot, botMeta); if (botMeta.settings.ai && !botMeta.isMoving) { const target = bot.nearestEntity(p => p.type === 'player'); if (target) bot.lookAt(target.position.offset(0, 1.6, 0)); } if (botMeta.settings.walk && !botMeta.isMoving && Math.random() > 0.7) { botMeta.isMoving = true; const targetPos = botMeta.centerPos.offset((Math.random()-0.5)*12, 0, (Math.random()-0.5)*12); pushLog(`👣 巡逻: 目标点 [${Math.round(targetPos.x)}, ${Math.round(targetPos.z)}]`, 'text-[#4ade80]'); bot.pathfinder.setGoal(new goals.GoalNear(targetPos.x, targetPos.y, targetPos.z, 1)); } if (botMeta.settings.chat && Math.random() > 0.92) { const m = generateNaturalChat('idle'); bot.chat(m); pushLog(`💬 拟人发话: ${m}`, 'text-orange-400'); } }, 8000); }); bot.on('goal_reached', () => { botMeta.isMoving = false; }); bot.once('end', () => attemptRepair(id, botMeta, "断开")); bot.on('error', (e) => attemptRepair(id, botMeta, e.code || "ERR")); } catch (err) { attemptRepair(id, botMeta, "失败"); } }
 function attemptRepair(id, botMeta, reason) { if (!activeBots.has(id) || botMeta.isRepairing) return; botMeta.isRepairing = true; botMeta.status = "重连中"; if (botMeta.instance) { botMeta.instance.removeAllListeners(); try { botMeta.instance.end(); } catch(e) {} botMeta.instance = null; } if (botMeta.afkTimer) clearInterval(botMeta.afkTimer); setTimeout(() => { if (!activeBots.has(id)) return; botMeta.isRepairing = false; createSmartBot(id, botMeta.targetHost, botMeta.targetPort, botMeta.username, botMeta.logs, botMeta.settings); }, 10000); }
 
 // --- [ 5. 机器人列表 API ] ---
@@ -122,7 +122,7 @@ setInterval(async () => {
     }
 }, 3 * 60 * 1000);
 
-// --- [ 应用中心 API (全核心接入容错多通道下载) ] ---
+// --- [ 应用中心 API ] ---
 function pushLogArr(arr, msg, color = '') { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); arr.unshift({ time, msg, color }); if (arr.length > 50) arr.splice(50); }
 const execAsync = (cmd, opts) => new Promise((resolve, reject) => { exec(cmd, opts, (err, stdout, stderr) => { if (err) reject(err); else resolve({stdout, stderr}); }); });
 
@@ -137,15 +137,8 @@ app.post("/api/apps/firefox/start", async (req, res) => {
     const ARGO_AUTH = params.ARGO_AUTH || '';
     const env = { ...process.env, FF_PASS, FF_PORT };
     try {
-        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { 
-            pushLogArr(ffLogs, '⬇️ 获取 FF 脚本...', 'text-blue-400'); 
-            await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); 
-        }
-        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { 
-            pushLogArr(ffLogs, '⬇️ 多通道下载 CF 核心...', 'text-blue-400'); 
-            const dlCfCmd = `(curl -sL -o cloudflared https://mirror.ghproxy.com/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 || curl -sL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64); chmod +x cloudflared`;
-            await execAsync(dlCfCmd, { cwd: FF_DIR, shell: '/bin/bash' }); 
-        }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { pushLogArr(ffLogs, '⬇️ 下载 FF 脚本...', 'text-blue-400'); await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { pushLogArr(ffLogs, '⬇️ 下载 CF 核心...', 'text-blue-400'); await execAsync('curl -sL -o cloudflared https://github.moeyy.xyz/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: FF_DIR, shell: '/bin/bash' }); }
         pushLogArr(ffLogs, '🚀 启动 FF_Lite...', 'text-blue-400');
         ffLiteProcess = exec(`FF_PASS=${FF_PASS} FF_PORT=${FF_PORT} bash ff_lite.sh start`, { cwd: FF_DIR, env, shell: '/bin/bash' }, (err) => { if(err) pushLogArr(ffLogs, `❌ FF 异常`, 'text-red-500'); else pushLogArr(ffLogs, '✅ FF 已启动', 'text-emerald-400'); });
         let cfCmd = '';
@@ -156,11 +149,11 @@ app.post("/api/apps/firefox/start", async (req, res) => {
         cfTunnelProcess = exec(cfCmd, { cwd: FF_DIR, env, shell: '/bin/bash' });
         cfTunnelProcess.stderr.on('data', (d) => {
             const m = d.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 临时隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
+            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
             if(d.toString().match(/Connection (.*) registered/) && ARGO_DOMAIN) { cfTunnelUrl = ARGO_DOMAIN; pushLogArr(ffLogs, `✅ 固定隧道就绪！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
         });
         res.json({ success: true });
-    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/firefox/stop", (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null; kill $(lsof -t -i:25889) 2>/dev/null', { shell: '/bin/bash' }); if(ffLiteProcess) try{ffLiteProcess.kill()}catch(e){}; if(cfTunnelProcess) try{cfTunnelProcess.kill()}catch(e){}; ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; res.json({ success: true }); });
 app.delete("/api/apps/firefox/uninstall", async (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null', { shell: '/bin/bash' }); ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; try { await fs.rm(FF_DIR, { recursive: true, force: true }); pushLogArr(ffLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
@@ -191,7 +184,7 @@ app.post("/api/apps/music/start", async (req, res) => {
 app.post("/api/apps/music/stop", (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/music/uninstall", async (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; try { await fs.rm(MUSIC_DIR, { recursive: true, force: true }); pushLogArr(musicLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
-// 【绝对容错】：哪吒探针 锁定 V1.1.4 稳定版，彻底解决参数报错
+// 【核心修复区】：哪吒探针锁定 v0.20.5 经典稳定版
 app.get("/api/apps/nezha/status", (req, res) => res.json({ installed: fsSync.existsSync(NEZHA_DIR), running: nezhaProcess !== null && !nezhaProcess.killed, logs: nezhaLogs }));
 app.post("/api/apps/nezha/start", async (req, res) => {
     if (nezhaProcess && !nezhaProcess.killed) return res.status(400).json({ success: false });
@@ -199,9 +192,8 @@ app.post("/api/apps/nezha/start", async (req, res) => {
     const params = req.body.params || {};
     try {
         if (!fsSync.existsSync(path.join(NEZHA_DIR, 'nezha-agent'))) {
-            pushLogArr(nezhaLogs, '⬇️ 锁定下载哪吒探针 V1 稳定版...', 'text-blue-400');
-            // 锁定下载 v1.1.4 避免 V2 版本参数废弃导致报错
-            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/download/v1.1.4/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/download/v1.1.4/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
+            pushLogArr(nezhaLogs, '⬇️ 锁定下载哪吒探针 v0.20.5 (经典稳定版)...', 'text-blue-400');
+            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/download/v0.20.5/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/download/v0.20.5/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
             await execAsync(dlCmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         }
         pushLogArr(nezhaLogs, '🚀 启动探针...', 'text-blue-400');
@@ -217,7 +209,6 @@ app.post("/api/apps/nezha/start", async (req, res) => {
 app.post("/api/apps/nezha/stop", (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/nezha/uninstall", async (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; try { await fs.rm(NEZHA_DIR, { recursive: true, force: true }); pushLogArr(nezhaLogs, '🗑️ 已卸载哪吒探针', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
-// 【绝对容错】：Vmess多通道下载
 app.get("/api/apps/proxy/status", (req, res) => res.json({ 
     installed: fsSync.existsSync(PROXY_DIR), 
     running: (proxyProcess !== null && !proxyProcess.killed), 
@@ -309,7 +300,7 @@ app.get("/", (req, res) => {
         '        .btn-primary:hover { background-color: #1d4ed8; }',
         '        .btn-danger { background-color: #ef4444; color: white; border-radius: 0.5rem; padding: 0.5rem; font-weight: bold; font-size: 0.875rem; cursor: pointer; width: 100%; }',
         '        .btn-danger:hover { background-color: #dc2626; }',
-        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 10rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
+        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 12rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
         '        .log-box::-webkit-scrollbar { width: 4px; } .log-box::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }',
         '        .toggle-btn { padding: 0.625rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 0.25rem; cursor: pointer; border: none; }',
         '        .toggle-on { background-color: #2563eb; color: white; }',
@@ -521,7 +512,7 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.SERVER_PORT || 4681;
 const server = app.listen(PORT, '0.0.0.0', () => { 
-    console.log(`\n✅ Pathfinder PRO 已启动，原版UI、监控悬浮窗 及 修复版探针下载 均已就绪！`);
+    console.log(`\n✅ Pathfinder PRO 已启动，原版UI、监控悬浮窗 及 V0.20.5 经典探针 均已就绪！`);
     console.log(`🌐 访问地址: http://127.0.0.1:${PORT}`);
     console.log(`🔑 默认账号: admin  |  默认密码: 123456\n`);
     
