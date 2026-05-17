@@ -1,10 +1,11 @@
 /**
  * ============================================================
- * 项目名称：Pathfinder PRO (2025 极客原版 UI 完美复刻 + 隧道代理 + 右下角监控)
+ * 项目名称：Pathfinder PRO (2025 极客原版 UI 完美复刻 + 隧道代理)
  * 核心增强：拟人词库、错别字模拟、智能回嘴、进服宣言
  * 应用中心：火狐浏览器、音乐加速、哪吒探针V1、Xray(Vmess)代理
  * 系统功能：系统状态监控、全局任务中心、面板基础加密
- * 界面重构：完美复刻黑框绿边UI，恢复右下角实时内存监控悬浮窗
+ * 界面重构：完美复刻黑框绿边UI，显示完整IP和在线状态徽章，补全Vmess隧道
+ * 深度修复：修复哪吒探针等应用因 GitHub 阻断导致的卡死，增加全球CDN加速
  * ============================================================
  */
 const fs = require('fs').promises;
@@ -122,7 +123,7 @@ setInterval(async () => {
     }
 }, 3 * 60 * 1000);
 
-// --- [ 应用中心 API ] ---
+// --- [ 应用中心 API (增加了 ghp.ci 全球加速，防止下载卡死) ] ---
 function pushLogArr(arr, msg, color = '') { const time = new Date().toLocaleTimeString('zh-CN', { hour12: false }); arr.unshift({ time, msg, color }); if (arr.length > 50) arr.splice(50); }
 const execAsync = (cmd, opts) => new Promise((resolve, reject) => { exec(cmd, opts, (err, stdout, stderr) => { if (err) reject(err); else resolve({stdout, stderr}); }); });
 
@@ -137,8 +138,8 @@ app.post("/api/apps/firefox/start", async (req, res) => {
     const ARGO_AUTH = params.ARGO_AUTH || '';
     const env = { ...process.env, FF_PASS, FF_PORT };
     try {
-        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { pushLogArr(ffLogs, '⬇️ 下载 FF 脚本...', 'text-blue-400'); await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); }
-        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { pushLogArr(ffLogs, '⬇️ 下载 CF 核心...', 'text-blue-400'); await execAsync('curl -sL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: FF_DIR, shell: '/bin/bash' }); }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { pushLogArr(ffLogs, '⬇️ 正在获取 FF 核心...', 'text-blue-400'); await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { pushLogArr(ffLogs, '⬇️ 正在加速下载 CF 隧道核心...', 'text-blue-400'); await execAsync('curl -sL -o cloudflared https://ghp.ci/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: FF_DIR, shell: '/bin/bash' }); }
         pushLogArr(ffLogs, '🚀 启动 FF_Lite...', 'text-blue-400');
         ffLiteProcess = exec(`FF_PASS=${FF_PASS} FF_PORT=${FF_PORT} bash ff_lite.sh start`, { cwd: FF_DIR, env, shell: '/bin/bash' }, (err) => { if(err) pushLogArr(ffLogs, `❌ FF 异常`, 'text-red-500'); else pushLogArr(ffLogs, '✅ FF 已启动', 'text-emerald-400'); });
         let cfCmd = '';
@@ -149,11 +150,11 @@ app.post("/api/apps/firefox/start", async (req, res) => {
         cfTunnelProcess = exec(cfCmd, { cwd: FF_DIR, env, shell: '/bin/bash' });
         cfTunnelProcess.stderr.on('data', (d) => {
             const m = d.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
+            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 临时隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
             if(d.toString().match(/Connection (.*) registered/) && ARGO_DOMAIN) { cfTunnelUrl = ARGO_DOMAIN; pushLogArr(ffLogs, `✅ 固定隧道就绪！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
         });
         res.json({ success: true });
-    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/firefox/stop", (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null; kill $(lsof -t -i:25889) 2>/dev/null', { shell: '/bin/bash' }); if(ffLiteProcess) try{ffLiteProcess.kill()}catch(e){}; if(cfTunnelProcess) try{cfTunnelProcess.kill()}catch(e){}; ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; res.json({ success: true }); });
 app.delete("/api/apps/firefox/uninstall", async (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null', { shell: '/bin/bash' }); ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; try { await fs.rm(FF_DIR, { recursive: true, force: true }); pushLogArr(ffLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
@@ -184,6 +185,7 @@ app.post("/api/apps/music/start", async (req, res) => {
 app.post("/api/apps/music/stop", (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/music/uninstall", async (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; try { await fs.rm(MUSIC_DIR, { recursive: true, force: true }); pushLogArr(musicLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
+// 【核心修复区】：哪吒探针加入了 ghp.ci 代理下载，修复了解压文件名冲突
 app.get("/api/apps/nezha/status", (req, res) => res.json({ installed: fsSync.existsSync(NEZHA_DIR), running: nezhaProcess !== null && !nezhaProcess.killed, logs: nezhaLogs }));
 app.post("/api/apps/nezha/start", async (req, res) => {
     if (nezhaProcess && !nezhaProcess.killed) return res.status(400).json({ success: false });
@@ -191,20 +193,23 @@ app.post("/api/apps/nezha/start", async (req, res) => {
     const params = req.body.params || {};
     try {
         if (!fsSync.existsSync(path.join(NEZHA_DIR, 'nezha-agent'))) {
-            pushLogArr(nezhaLogs, '⬇️ 下载哪吒探针 V1...', 'text-blue-400');
-            await execAsync('curl -sL -o nezha-agent https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip && unzip -q nezha-agent -d . && rm nezha-agent_linux_amd64.zip && chmod +x nezha-agent', { cwd: NEZHA_DIR, shell: '/bin/bash' });
+            pushLogArr(nezhaLogs, '⬇️ 正在通过 CDN 加速下载哪吒探针 V1...', 'text-blue-400');
+            await execAsync('curl -sL -o nezha.zip https://ghp.ci/https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip && unzip -qo nezha.zip && rm -f nezha.zip && chmod +x nezha-agent', { cwd: NEZHA_DIR, shell: '/bin/bash' });
         }
         pushLogArr(nezhaLogs, '🚀 启动探针...', 'text-blue-400');
         let cmd = `./nezha-agent -s ${params.SERVER}:${params.PORT} -p ${params.SECRET}`;
         if(params.TLS) cmd += ' --tls';
         nezhaProcess = exec(cmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         nezhaProcess.stdout.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-slate-300'));
+        nezhaProcess.stderr.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-yellow-400'));
+        nezhaProcess.on('close', (code) => { nezhaProcess = null; pushLogArr(nezhaLogs, `⏹️ 探针停止运行 (Code: ${code})`, 'text-orange-400'); });
         res.json({ success: true });
-    } catch (err) { pushLogArr(nezhaLogs, '❌ 启动失败', 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(nezhaLogs, `❌ 启动/下载失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/nezha/stop", (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/nezha/uninstall", async (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; try { await fs.rm(NEZHA_DIR, { recursive: true, force: true }); pushLogArr(nezhaLogs, '🗑️ 已卸载哪吒探针', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
+// 【核心修复区】：Vmess 加了 ghp.ci 下载代理，修复解压卡死
 app.get("/api/apps/proxy/status", (req, res) => res.json({ 
     installed: fsSync.existsSync(PROXY_DIR), 
     running: (proxyProcess !== null && !proxyProcess.killed), 
@@ -227,17 +232,18 @@ app.post("/api/apps/proxy/start", async (req, res) => {
     try {
         await fs.writeFile(path.join(PROXY_DIR, 'config.json'), JSON.stringify(vmessConfig, null, 2));
         if (!fsSync.existsSync(path.join(PROXY_DIR, 'xray'))) {
-            pushLogArr(proxyLogs, '⬇️ 下载 Xray (vmess) 核心...', 'text-blue-400');
-            await execAsync('curl -sL -o xray.zip https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip && unzip -q xray.zip xray -d . && rm xray.zip && chmod +x xray', { cwd: PROXY_DIR, shell: '/bin/bash' });
+            pushLogArr(proxyLogs, '⬇️ CDN 加速下载 Xray (vmess) 核心...', 'text-blue-400');
+            await execAsync('curl -sL -o xray.zip https://ghp.ci/https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip && unzip -qo xray.zip xray && rm -f xray.zip && chmod +x xray', { cwd: PROXY_DIR, shell: '/bin/bash' });
         }
         if (!fsSync.existsSync(path.join(PROXY_DIR, 'cloudflared'))) {
-            pushLogArr(proxyLogs, '⬇️ 下载 CF 隧道核心...', 'text-blue-400');
-            await execAsync('curl -sL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: PROXY_DIR, shell: '/bin/bash' });
+            pushLogArr(proxyLogs, '⬇️ CDN 加速下载 CF 隧道核心...', 'text-blue-400');
+            await execAsync('curl -sL -o cloudflared https://ghp.ci/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: PROXY_DIR, shell: '/bin/bash' });
         }
 
         pushLogArr(proxyLogs, `🚀 启动 Vmess 本地服务 (端口: ${port})...`, 'text-blue-400');
         proxyProcess = exec('./xray -c config.json', { cwd: PROXY_DIR, shell: '/bin/bash' });
         proxyProcess.stdout.on('data', d => pushLogArr(proxyLogs, d.toString().trim(), 'text-slate-300'));
+        proxyProcess.stderr.on('data', d => pushLogArr(proxyLogs, d.toString().trim(), 'text-yellow-400'));
         
         pushLogArr(proxyLogs, '🌐 构建 CF 隧道穿透...', 'text-blue-400');
         let cfCmd = '';
@@ -249,12 +255,12 @@ app.post("/api/apps/proxy/start", async (req, res) => {
         proxyCfProcess = exec(cfCmd, { cwd: PROXY_DIR, env, shell: '/bin/bash' });
         proxyCfProcess.stderr.on('data', (d) => {
             const m = d.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-            if (m) { proxyCfUrl = m[0]; pushLogArr(proxyLogs, `✅ 隧道已穿透！ 👉 ${proxyCfUrl}`, 'text-emerald-400'); }
+            if (m) { proxyCfUrl = m[0]; pushLogArr(proxyLogs, `✅ 临时隧道已穿透！ 👉 ${proxyCfUrl}`, 'text-emerald-400'); }
             if(d.toString().match(/Connection (.*) registered/) && ARGO_DOMAIN) { proxyCfUrl = ARGO_DOMAIN; pushLogArr(proxyLogs, `✅ 固定隧道已就绪！ 👉 ${proxyCfUrl}`, 'text-emerald-400'); }
         });
 
         res.json({ success: true });
-    } catch (err) { pushLogArr(proxyLogs, '❌ 代理启动失败', 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(proxyLogs, `❌ 代理启动/下载失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/proxy/stop", (req, res) => { 
     if(proxyProcess) try{proxyProcess.kill()}catch(e){}; 
@@ -271,7 +277,7 @@ app.delete("/api/apps/proxy/uninstall", async (req, res) => {
     try { await fs.rm(PROXY_DIR, { recursive: true, force: true }); pushLogArr(proxyLogs, '🗑️ 已卸载代理组件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } 
 });
 
-// --- [ UI 前端渲染 - 1:1 还原你提供的原版极客样式 (带在线徽章+IP) 加上右下角监控 ] ---
+// --- [ UI 前端渲染 - 1:1 还原原版极客样式 (带在线徽章+IP) ] ---
 app.get("/", (req, res) => {
     const htmlLines = [
         '<!DOCTYPE html>',
@@ -282,7 +288,7 @@ app.get("/", (req, res) => {
         '    <title>Pathfinder PRO 2025</title>',
         '    <script src="https://cdn.tailwindcss.com"></script>',
         '    <style>',
-        '        body { background-color: #030712; color: #f8fafc; font-family: ui-sans-serif, system-ui, sans-serif; }',
+        '        body { background-color: #0b1120; color: #f8fafc; font-family: ui-sans-serif, system-ui, sans-serif; }',
         '        .card-container { background-color: #111827; border-radius: 1rem; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; border-width: 2px; }',
         '        .border-online { border-color: #10b981; }',
         '        .border-offline { border-color: #ef4444; }',
@@ -293,7 +299,7 @@ app.get("/", (req, res) => {
         '        .btn-primary:hover { background-color: #1d4ed8; }',
         '        .btn-danger { background-color: #ef4444; color: white; border-radius: 0.5rem; padding: 0.5rem; font-weight: bold; font-size: 0.875rem; cursor: pointer; width: 100%; }',
         '        .btn-danger:hover { background-color: #dc2626; }',
-        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 10rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
+        '        .log-box { background-color: #030712; border-radius: 0.75rem; padding: 0.75rem; height: 12rem; overflow-y: auto; font-family: monospace; font-size: 0.7rem; }',
         '        .log-box::-webkit-scrollbar { width: 4px; } .log-box::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }',
         '        .toggle-btn { padding: 0.625rem; border-radius: 0.75rem; font-size: 0.75rem; font-weight: bold; display: flex; justify-content: center; align-items: center; gap: 0.25rem; cursor: pointer; border: none; }',
         '        .toggle-on { background-color: #2563eb; color: white; }',
@@ -307,8 +313,8 @@ app.get("/", (req, res) => {
         '</head>',
         '<body class="p-6 md:p-10">',
         '    <div class="max-w-7xl mx-auto">',
-        '        <h1 class="text-3xl font-black text-blue-400 uppercase tracking-wide">Pathfinder PRO</h1>',
-        '        <p class="text-xs text-slate-500 mt-1 mb-8">全局系统管理器 v2025</p>',
+        '        <h1 class="text-4xl font-black text-[#3b82f6] uppercase tracking-wide">Pathfinder PRO</h1>',
+        '        <p class="text-sm text-slate-400 mt-1 mb-8">全局系统管理器 v2025</p>',
         '        <div class="flex gap-6 border-b border-slate-800 mb-6">',
         '            <button onclick="switchTab(\'bots\')" id="tab-bots" class="nav-tab active">🤖 机器人列表</button>',
         '            <button onclick="switchTab(\'apps\')" id="tab-apps" class="nav-tab">🚀 应用中心</button>',
@@ -380,17 +386,6 @@ app.get("/", (req, res) => {
         '        </div>',
         '    </div>',
 
-        '    ',
-        '    <div id="mem-bar" class="fixed bottom-6 right-6 p-4 bg-gray-900 border-2 border-slate-800 rounded-xl flex items-center gap-4 z-40 shadow-2xl shadow-black">',
-        '        <div class="flex flex-col items-center justify-center">',
-        '            <span id="mem-percent" class="text-xl font-black text-white tracking-tight">0.0%</span>',
-        '            <span class="text-[9px] font-bold text-slate-500 uppercase tracking-widest">RAM</span>',
-        '        </div>',
-        '        <div class="w-28 h-2 bg-slate-800 rounded-full overflow-hidden shadow-inner">',
-        '            <div id="mem-progress" class="h-full bg-blue-500 transition-all duration-700 rounded-full" style="width: 0%"></div>',
-        '        </div>',
-        '    </div>',
-
         '    <script>',
         '        function switchTab(tab) {',
         '            document.querySelectorAll(".view-content").forEach(function(el) { el.classList.remove("active"); });',
@@ -419,7 +414,7 @@ app.get("/", (req, res) => {
         '                let logsHtml = b.logs.map(function(l) { return "<div class=\\"mb-1 " + l.color + "\\">[" + l.time + "] " + l.msg + "</div>"; }).join("");',
         
         '                let card = "<div class=\\"card-container " + borderClass + "\\">";',
-        '                card += "<div class=\\"flex justify-between items-start\\"><div class=\\"flex flex-col\\"><div class=\\"flex items-center gap-2\\"><h3 class=\\"text-xl font-bold text-white\\">" + b.username + "</h3>" + statusBadge + "</div><div class=\\"text-[11px] text-slate-500 mt-1 font-mono\\">" + b.host + ":" + b.port + "</div></div><button onclick=\\"removeBot(\\&#39;" + b.id + "\\&#39;)\\" class=\\"text-slate-500 hover:text-white text-xl leading-none\\">✕</button></div>";',
+        '                card += "<div class=\\"flex justify-between items-start\\"><div class=\\"flex flex-col\\"><div class=\\"flex items-center gap-2\\"><h3 class=\\"text-2xl font-bold text-white\\">" + b.username + "</h3>" + statusBadge + "</div><div class=\\"text-[11px] text-slate-500 mt-1 font-mono\\">" + b.host + ":" + b.port + "</div></div><button onclick=\\"removeBot(\\&#39;" + b.id + "\\&#39;)\\" class=\\"text-slate-500 hover:text-white text-xl leading-none\\">✕</button></div>";',
         '                card += "<div class=\\"log-box\\">" + logsHtml + "</div>";',
         '                card += "<div class=\\"grid grid-cols-3 gap-3\\">";',
         '                card += "<button onclick=\\"toggle(\\&#39;" + b.id + "\\&#39;, \\&#39;ai\\&#39;)\\" class=\\"toggle-btn " + aiClass + "\\">👁️ AI</button>";',
@@ -479,23 +474,8 @@ app.get("/", (req, res) => {
         '        async function addTask() { await fetch("/api/tasks", { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ name: document.getElementById("t-name").value, type: document.getElementById("t-type").value, interval: document.getElementById("t-interval").value }) }); loadTasks(); }',
         '        async function removeTask(id) { await fetch("/api/tasks/"+id, { method: "DELETE" }); loadTasks(); }',
         
-        '        async function updateRealtimeMem() { ',
-        '            try { ',
-        '                const r = await fetch("/api/system/status"); const d = await r.json(); ',
-        '                document.getElementById("mem-percent").innerText = d.percent + "%"; ',
-        '                document.getElementById("mem-progress").style.width = d.percent + "%"; ',
-        '                const prog = document.getElementById("mem-progress"); ',
-        '                if(parseFloat(d.percent) > 80) prog.className = "h-full bg-red-500 transition-all duration-700 rounded-full"; ',
-        '                else prog.className = "h-full bg-blue-500 transition-all duration-700 rounded-full"; ',
-        '            } catch(e){} ',
-        '        }',
-
-        '        setInterval(function() { ',
-        '            updateUI(false); updateRealtimeMem();',
-        '            if(document.getElementById("view-apps").classList.contains("active")) updateApps(); ',
-        '            if(document.getElementById("view-system").classList.contains("active")) loadSys(); ',
-        '        }, 3000);',
-        '        updateUI(true); updateRealtimeMem();',
+        '        setInterval(function() { updateUI(false); if(document.getElementById("view-apps").classList.contains("active")) updateApps(); if(document.getElementById("view-system").classList.contains("active")) loadSys(); }, 3000);',
+        '        updateUI(true);',
         '    </script>',
         '</body>',
         '</html>'
@@ -505,7 +485,7 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.SERVER_PORT || 4681;
 const server = app.listen(PORT, '0.0.0.0', () => { 
-    console.log(`\n✅ Pathfinder PRO 已启动，原版UI(在线徽章) 及 隧道代理 功能配置完毕！`);
+    console.log(`\n✅ Pathfinder PRO 已启动，哪吒 CDN 加速下载已开启！`);
     console.log(`🌐 访问地址: http://127.0.0.1:${PORT}`);
     console.log(`🔑 默认账号: admin  |  默认密码: 123456\n`);
     
