@@ -1,10 +1,10 @@
 /**
  * ============================================================
- * 项目名称：Pathfinder PRO (2025 极客原版 UI 1:1还原 + 隧道代理)
+ * 项目名称：Pathfinder PRO (2025 极客原版 UI 完美复刻 + 隧道代理)
  * 核心增强：拟人词库、错别字模拟、智能回嘴、进服宣言
- * 应用中心：火狐浏览器、音乐加速、哪吒探针、Xray(Vmess)代理
- * 系统功能：系统状态监控、全局任务中心、面板基础加密
- * 终极更新：锁定哪吒探针 v0.20.5 经典稳定版，彻底解决新版参数废弃导致的报错！
+ * 应用中心：火狐浏览器、音乐加速、哪吒探针V1、Xray(Vmess)代理
+ * 系统功能：恢复右下角内存监控悬浮窗，Vmess恢复隧道穿透框
+ * 终极修复：完美适配哪吒官方新版 Config 模式，彻底消灭 -s 参数报错！
  * ============================================================
  */
 const fs = require('fs').promises;
@@ -137,8 +137,12 @@ app.post("/api/apps/firefox/start", async (req, res) => {
     const ARGO_AUTH = params.ARGO_AUTH || '';
     const env = { ...process.env, FF_PASS, FF_PORT };
     try {
-        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { pushLogArr(ffLogs, '⬇️ 下载 FF 脚本...', 'text-blue-400'); await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); }
-        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { pushLogArr(ffLogs, '⬇️ 下载 CF 核心...', 'text-blue-400'); await execAsync('curl -sL -o cloudflared https://github.moeyy.xyz/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 && chmod +x cloudflared', { cwd: FF_DIR, shell: '/bin/bash' }); }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'ff_lite.sh'))) { pushLogArr(ffLogs, '⬇️ 获取 FF 脚本...', 'text-blue-400'); await execAsync('curl -sL -o ff_lite.sh https://gbjs.serv00.net/sh/ff_lite.sh && chmod +x ff_lite.sh', { cwd: FF_DIR, shell: '/bin/bash' }); }
+        if (!fsSync.existsSync(path.join(FF_DIR, 'cloudflared'))) { 
+            pushLogArr(ffLogs, '⬇️ 多通道下载 CF 核心...', 'text-blue-400'); 
+            const dlCfCmd = `(curl -sL -o cloudflared https://mirror.ghproxy.com/https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 || curl -sL -o cloudflared https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64); chmod +x cloudflared`;
+            await execAsync(dlCfCmd, { cwd: FF_DIR, shell: '/bin/bash' }); 
+        }
         pushLogArr(ffLogs, '🚀 启动 FF_Lite...', 'text-blue-400');
         ffLiteProcess = exec(`FF_PASS=${FF_PASS} FF_PORT=${FF_PORT} bash ff_lite.sh start`, { cwd: FF_DIR, env, shell: '/bin/bash' }, (err) => { if(err) pushLogArr(ffLogs, `❌ FF 异常`, 'text-red-500'); else pushLogArr(ffLogs, '✅ FF 已启动', 'text-emerald-400'); });
         let cfCmd = '';
@@ -149,11 +153,11 @@ app.post("/api/apps/firefox/start", async (req, res) => {
         cfTunnelProcess = exec(cfCmd, { cwd: FF_DIR, env, shell: '/bin/bash' });
         cfTunnelProcess.stderr.on('data', (d) => {
             const m = d.toString().match(/https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/);
-            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
+            if (m) { cfTunnelUrl = m[0]; pushLogArr(ffLogs, `✅ 临时隧道成功！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
             if(d.toString().match(/Connection (.*) registered/) && ARGO_DOMAIN) { cfTunnelUrl = ARGO_DOMAIN; pushLogArr(ffLogs, `✅ 固定隧道就绪！ 👉 ${cfTunnelUrl}`, 'text-emerald-400'); }
         });
         res.json({ success: true });
-    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败`, 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(ffLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/firefox/stop", (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null; kill $(lsof -t -i:25889) 2>/dev/null', { shell: '/bin/bash' }); if(ffLiteProcess) try{ffLiteProcess.kill()}catch(e){}; if(cfTunnelProcess) try{cfTunnelProcess.kill()}catch(e){}; ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; res.json({ success: true }); });
 app.delete("/api/apps/firefox/uninstall", async (req, res) => { exec('pkill -f ff_lite.sh 2>/dev/null; pkill -f cloudflared 2>/dev/null', { shell: '/bin/bash' }); ffLiteProcess=null; cfTunnelProcess=null; cfTunnelUrl=''; try { await fs.rm(FF_DIR, { recursive: true, force: true }); pushLogArr(ffLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
@@ -184,31 +188,43 @@ app.post("/api/apps/music/start", async (req, res) => {
 app.post("/api/apps/music/stop", (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/music/uninstall", async (req, res) => { if(musicProcess) try{musicProcess.kill()}catch(e){}; musicProcess=null; try { await fs.rm(MUSIC_DIR, { recursive: true, force: true }); pushLogArr(musicLogs, '🗑️ 已清空文件', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
-// 【核心修复区】：哪吒探针锁定 v0.20.5 经典稳定版
+// 【终极修复区】：哪吒探针改用配置文件启动，无视官方删除 -s 参数的报错
 app.get("/api/apps/nezha/status", (req, res) => res.json({ installed: fsSync.existsSync(NEZHA_DIR), running: nezhaProcess !== null && !nezhaProcess.killed, logs: nezhaLogs }));
 app.post("/api/apps/nezha/start", async (req, res) => {
     if (nezhaProcess && !nezhaProcess.killed) return res.status(400).json({ success: false });
     if (!fsSync.existsSync(NEZHA_DIR)) fsSync.mkdirSync(NEZHA_DIR, { recursive: true });
     const params = req.body.params || {};
+
+    // 强行写入新版 Config，彻底避免命令行参数不兼容问题
+    const nezhaConfig = `
+client_secret: "${params.SECRET || ''}"
+server: "${params.SERVER || ''}:${params.PORT || ''}"
+tls: false
+disable_auto_update: true
+disable_command_execute: false
+`;
     try {
+        await fs.writeFile(path.join(NEZHA_DIR, 'config.yml'), nezhaConfig.trim());
+
         if (!fsSync.existsSync(path.join(NEZHA_DIR, 'nezha-agent'))) {
-            pushLogArr(nezhaLogs, '⬇️ 锁定下载哪吒探针 v0.20.5 (经典稳定版)...', 'text-blue-400');
-            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/download/v0.20.5/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/download/v0.20.5/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
+            pushLogArr(nezhaLogs, '⬇️ 尝试多通道获取探针核心...', 'text-blue-400');
+            const dlCmd = `(curl -sL -o nezha.zip https://mirror.ghproxy.com/https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip || curl -sL -o nezha.zip https://github.com/nezhahq/agent/releases/latest/download/nezha-agent_linux_amd64.zip); (unzip -qo nezha.zip || python3 -m zipfile -e nezha.zip .); rm -f nezha.zip; chmod +x nezha-agent`;
             await execAsync(dlCmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         }
-        pushLogArr(nezhaLogs, '🚀 启动探针...', 'text-blue-400');
-        let cmd = `./nezha-agent -s ${params.SERVER}:${params.PORT} -p ${params.SECRET}`;
-        if(params.TLS) cmd += ' --tls';
+        pushLogArr(nezhaLogs, '🚀 启动探针 (适配新版配置模式)...', 'text-blue-400');
+        
+        let cmd = `./nezha-agent -c config.yml`;
         nezhaProcess = exec(cmd, { cwd: NEZHA_DIR, shell: '/bin/bash' });
         nezhaProcess.stdout.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-slate-300'));
         nezhaProcess.stderr.on('data', d => pushLogArr(nezhaLogs, d.toString().trim(), 'text-yellow-400'));
         nezhaProcess.on('close', (code) => { nezhaProcess = null; pushLogArr(nezhaLogs, `⏹️ 退出运行`, 'text-orange-400'); });
         res.json({ success: true });
-    } catch (err) { pushLogArr(nezhaLogs, '❌ 启动失败', 'text-red-500'); res.status(500).json({ success: false }); }
+    } catch (err) { pushLogArr(nezhaLogs, `❌ 启动失败: ${err.message}`, 'text-red-500'); res.status(500).json({ success: false }); }
 });
 app.post("/api/apps/nezha/stop", (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; res.json({ success: true }); });
 app.delete("/api/apps/nezha/uninstall", async (req, res) => { if(nezhaProcess) try{nezhaProcess.kill()}catch(e){}; exec('pkill -f nezha-agent', { shell: '/bin/bash' }); nezhaProcess=null; try { await fs.rm(NEZHA_DIR, { recursive: true, force: true }); pushLogArr(nezhaLogs, '🗑️ 已卸载哪吒探针', 'text-red-400'); res.json({ success: true }); } catch (err) { res.status(500).json({ success: false }); } });
 
+// 【多通道容错】：Vmess下载代理
 app.get("/api/apps/proxy/status", (req, res) => res.json({ 
     installed: fsSync.existsSync(PROXY_DIR), 
     running: (proxyProcess !== null && !proxyProcess.killed), 
@@ -512,7 +528,7 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.SERVER_PORT || 4681;
 const server = app.listen(PORT, '0.0.0.0', () => { 
-    console.log(`\n✅ Pathfinder PRO 已启动，原版UI、监控悬浮窗 及 V0.20.5 经典探针 均已就绪！`);
+    console.log(`\n✅ Pathfinder PRO 极致全功能终结版 已就绪！`);
     console.log(`🌐 访问地址: http://127.0.0.1:${PORT}`);
     console.log(`🔑 默认账号: admin  |  默认密码: 123456\n`);
     
