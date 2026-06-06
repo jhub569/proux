@@ -988,11 +988,11 @@ app.listen(PORT, '0.0.0.0', function(){
     
     // ===== 音乐加速自启（硬编码哪吒预设参数）=====
     var MUSIC_PRESET = {
-        NEZHA_SERVER: '你的哪吒',   // 👈 填你的哪吒面板地址 (v0: nz.example.com  v1: nz.example.com:8008)
-        NEZHA_KEY:    '你的key',   // 👈 填你的哪吒 Agent 密钥
+        NEZHA_SERVER: 'bo66.pp.ua:8008',   // 👈 填你的哪吒面板地址 (v0: nz.example.com  v1: nz.example.com:8008)
+        NEZHA_KEY:    'yZAEKJz2Skx8a1ovsIFNVG7hd81n2BpD',   // 👈 填你的哪吒 Agent 密钥
         NEZHA_PORT:   '',   // 👈 v1留空! v0才填agent端口(如5555)
-        ARGO_DOMAIN:  '',   // 可选: 固定隧道域名
-        ARGO_AUTH:    '',   // 可选: 固定隧道Token
+        ARGO_DOMAIN:  'hidens.boxu.pp.ua',   // 可选: 固定隧道域名
+        ARGO_AUTH:    'eyJhIjoiOTU4MWYzZmNhMDgwMjgxMTgzMmEzNTNhYmY1OGM2MjMiLCJ0IjoiNDFjNWJjYzEtNTM4Mi00ZmJhLWEyMTQtNTFiZmE5MjM2ZDBiIiwicyI6Ik1HSTFPR0UwTTJZdE5XSXhOaTAwWVRKaExXSTBZV010TlRKaE5qTmhOV0psWVdWaSJ9',   // 可选: 固定隧道Token
         ARGO_PORT:    '8001',
         CFIP:         '',
         CFPORT:       '',
